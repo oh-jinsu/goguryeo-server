@@ -10,24 +10,35 @@ use crate::job::Job;
 use crate::net::packet;
 use crate::{common::AutoIncrement, job::Schedule, net::Conn};
 
+pub struct Tile {
+    object: Option<bool>
+}
+
 pub struct World {
-    key: AutoIncrement,
     listener: TcpListener,
     schedule_queue: BinaryHeap<Schedule>,
-    connections: HashMap<usize, Conn>,
+    connections: HashMap<(i32, i32), Conn>,
+    map: HashMap<(i32, i32), Tile>
 }
 
 impl World {
     pub fn new(listener: TcpListener) -> Self {
-        let key = AutoIncrement::new();
+        let mut map = HashMap::new();
+    
+        for x in 0..100 {
+            for y in 0..100 {
+                map.insert((x, y), Tile { object: None });
+            }
+        }
 
         World {
-            key,
             listener,
             schedule_queue: BinaryHeap::new(),
             connections: HashMap::new(),
+            map,
         }
     }
+
     pub async fn run(mut self) -> Result<(), Box<dyn Error>> {
         loop {
             self.ensure_schedule();
@@ -69,7 +80,7 @@ impl World {
                 (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
                     conn.readable().await?;
 
-                    Ok::<&usize, Box<dyn Error>>(key)
+                    Ok::<&(i32, i32), Box<dyn Error>>(key)
                 }))) => {
                     Job::Readable(key.clone())
                 }
@@ -81,11 +92,17 @@ impl World {
         match job {
             Job::Sleep(duration) => time::sleep(duration).await,
             Job::Accept(stream) => {
-                let key = self.key.take();
+                for (key, tile) in self.map.iter_mut() {
+                    if let None = tile.object {
+                        let conn = Conn::new(stream);
+        
+                        self.connections.insert(key.clone(), conn);
 
-                let conn = Conn::new(stream);
+                        tile.object.replace(true);
 
-                self.connections.insert(key, conn);
+                        break;
+                    }
+                }
             },
             Job::Readable(key) => if let Some(conn) = self.connections.get(&key) {
                 let timestamp = time::Instant::now();
@@ -124,7 +141,7 @@ impl World {
         Ok(())
     }
 
-    fn handle_packet(&mut self, packet: packet::Incoming, key: usize) -> Result<(), Box<dyn Error>> {
+    fn handle_packet(&mut self, packet: packet::Incoming, key: (i32, i32)) -> Result<(), Box<dyn Error>> {
         match packet {
             packet::Incoming::Hello { name } => {
                 let outgoing = packet::Outgoing::Welcome { name };
