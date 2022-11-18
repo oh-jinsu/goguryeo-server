@@ -44,6 +44,7 @@ impl Conn {
                         return Ok(())
                     }
                 },
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
                 Err(e) => return Err(e),
             }
         }
@@ -73,6 +74,7 @@ impl Conn {
                         return Ok(())
                     }
                 },
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
                 Err(e) => return Err(e),
             }
         }
