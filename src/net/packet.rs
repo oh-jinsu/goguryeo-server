@@ -11,6 +11,10 @@ pub enum Incoming {
 
 impl Incoming {
     pub fn deserialize(buf: &[u8]) -> Result<Self, Box<dyn Error>> {
+        if buf.len() < 2 {
+            return Err(format!("buffer too short to deserialize, {buf:?}").into())
+        }
+
         let serial = u16::from_le_bytes([buf[0], buf[1]]);
 
         let body = &buf[2..];
@@ -19,6 +23,7 @@ impl Incoming {
             1 => Ok(Incoming::Hello { name: String::from_utf8_lossy(body.truncate_last()).into_owned() }),
             3 => Ok(Self::Ping { timestamp: i64::from_le_bytes(body.clone_into_array()) }),
             4 => match body[0] {
+                0 => Ok(Self::Move { direction: 0 }),
                 1 => Ok(Self::Move { direction: 1 }),
                 2 => Ok(Self::Move { direction: 2 }),
                 3 => Ok(Self::Move { direction: 3 }),
@@ -32,24 +37,26 @@ impl Incoming {
 
 #[derive(Debug)]
 pub enum Outgoing {
-    Welcome { name: String },
+    Welcome { id: usize, name: String },
     Pong { timestamp: i64 },
-    Move { x: i32, y: i32 },
+    Move { id: usize, x: i32, y: i32 },
 }
 
 impl Outgoing {
     pub fn serialize(self) -> Vec<u8> {
         match self {
-            Outgoing::Welcome { name } => [
+            Outgoing::Welcome { id, name } => [
                 &(1 as u16).to_le_bytes() as &[u8],
+                &id.to_le_bytes(),
                 &name.as_bytes().to_sized(25),
             ].concat(),
             Outgoing::Pong { timestamp } => [
                 &(3 as u16).to_le_bytes() as &[u8],
                 &timestamp.to_le_bytes(),
             ].concat(),
-            Outgoing::Move { x, y } => [
+            Outgoing::Move { id, x, y } => [
                 &(4 as u16).to_le_bytes() as &[u8],
+                &id.to_le_bytes(),
                 &x.to_le_bytes(),
                 &y.to_le_bytes(),
             ].concat(),

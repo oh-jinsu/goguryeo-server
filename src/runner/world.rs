@@ -3,26 +3,44 @@ use std::collections::{BinaryHeap, HashMap};
 use std::io;
 
 use futures::future::select_all;
-use tokio::net::TcpListener;
-use tokio::time;
+use tokio::sync::mpsc;
+use tokio::time::{self, Instant};
 
 use crate::job::Job;
 use crate::net::packet;
-use crate::{common::AutoIncrement, job::Schedule, net::Conn};
+use crate::{job::Schedule, net::Conn};
 
 pub struct Tile {
-    object: Option<bool>
+    object: Option<Object>
+}
+
+pub enum Object {
+    Human {
+        id: usize,
+        state: HumanState,
+    },
+}
+
+impl Object {
+    pub fn new_human(id: usize) -> Self {
+        Object::Human { id, state: HumanState::Idle }
+    }
+}
+
+pub enum HumanState {
+    Idle,
+    Move { direction: u8 },
 }
 
 pub struct World {
-    listener: TcpListener,
     schedule_queue: BinaryHeap<Schedule>,
+    receiver: mpsc::Receiver<Conn>,
     connections: HashMap<(i32, i32), Conn>,
     map: HashMap<(i32, i32), Tile>
 }
 
 impl World {
-    pub fn new(listener: TcpListener) -> Self {
+    pub fn new(receiver: mpsc::Receiver<Conn>) -> Self {
         let mut map = HashMap::new();
     
         for x in 0..100 {
@@ -32,8 +50,8 @@ impl World {
         }
 
         World {
-            listener,
             schedule_queue: BinaryHeap::new(),
+            receiver,
             connections: HashMap::new(),
             map,
         }
@@ -41,8 +59,6 @@ impl World {
 
     pub async fn run(mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            self.ensure_schedule();
-    
             if let Some(job) = self.select_job().await {
                 if let Err(e) = self.handle_job(job).await {
                     eprintln!("{e}");
@@ -51,71 +67,76 @@ impl World {
         }
     }
 
-    fn ensure_schedule(&mut self) {
-        if self.schedule_queue.is_empty() {
-            let schedule = Schedule::new(
-                Job::Sleep(time::Duration::ZERO),
-                time::Instant::now() + time::Duration::from_secs(1),
-            );
-    
-            self.schedule_queue.push(schedule);
-        }
-    }
-
     async fn select_job(&mut self) -> Option<Job> {
         if self.connections.is_empty() {
-            if let Ok((stream, _)) = self.listener.accept().await {
-                Some(Job::Accept(stream))
+            if let Some(conn) = self.receiver.recv().await {
+                Some(Job::Arrived(conn))
             } else {
                 None
             }
-        } else {
+        } else if self.schedule_queue.is_empty() {
             Some(tokio::select! {
-                _ = time::sleep_until(self.schedule_queue.peek().unwrap().deadline) => {
-                    self.schedule_queue.pop().unwrap().job
+                Some(conn) = self.receiver.recv() => {
+                    Job::Arrived(conn)
                 },
-                Ok((stream, _)) = self.listener.accept() => {
-                    Job::Accept(stream)
-                }
                 (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
                     conn.readable().await?;
 
                     Ok::<&(i32, i32), Box<dyn Error>>(key)
                 }))) => {
                     Job::Readable(key.clone())
-                }
+                },
+            })
+        } else {
+            Some(tokio::select! {
+                Some(conn) = self.receiver.recv() => {
+                    Job::Arrived(conn)
+                },
+                (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
+                    conn.readable().await?;
+
+                    Ok::<&(i32, i32), Box<dyn Error>>(key)
+                }))) => {
+                    Job::Readable(key.clone())
+                },
+                _ = time::sleep_until(self.schedule_queue.peek().unwrap().deadline) => {
+                    self.schedule_queue.pop().unwrap().job
+                },
             })
         }
     }
 
     async fn handle_job(&mut self, job: Job) -> Result<(), Box<dyn Error>> {
         match job {
-            Job::Sleep(duration) => time::sleep(duration).await,
-            Job::Accept(stream) => {
+            Job::Arrived(conn) => {
                 for (key, tile) in self.map.iter_mut() {
                     if let None = tile.object {
-                        let conn = Conn::new(stream);
-        
+                        let id = conn.id;
+
+                        tile.object = Some(Object::new_human(id));
+
                         self.connections.insert(key.clone(), conn);
+                        
+                        let mut outgoing = packet::Outgoing::Welcome { id, name: String::from("anonymous") }.serialize();
 
-                        tile.object.replace(true);
+                        for conn in self.connections.values() {
+                            conn.try_write_one(&mut outgoing)?;
+                        }
 
-                        break;
+                        return Ok(());
                     }
                 }
-            },
+            }
             Job::Readable(key) => if let Some(conn) = self.connections.get(&key) {
-                let timestamp = time::Instant::now();
-
                 let mut buf = vec![0 as u8; 2];
 
-                if let Err(e) = conn.try_read_line(&mut buf) {
+                if let Err(e) = conn.try_read_one(&mut buf) {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         eprintln!("{e}");
 
                         self.connections.remove(&key);
                     }
-
+                
                     return Ok(());
                 }
 
@@ -133,33 +154,94 @@ impl World {
 
                     self.connections.remove(&key);
                 }
-
-                println!("incoming handling spent {:?}", timestamp.elapsed());
             },
+            Job::Move { current, tick } => if let Some(tile) = self.map.get(&current) {
+                if let Some(Object::Human { id, state }) = &tile.object {
+                    let id = id.clone();
+
+                    let next = match state {
+                        HumanState::Move { direction } => {
+                            let (x, y) = current;
+            
+                            match direction {
+                                1 => (x, y + 1),
+                                2 => (x, y - 1),
+                                3 => (x - 1, y),
+                                4 => (x + 1, y),
+                                _ => return Ok(())
+                            }
+                        },
+                        _ => {
+                            return Ok(());
+                        },
+                    };
+
+                    let is_unmovable = if let Some(tile) = self.map.get(&next) {
+                        tile.object.is_some()
+                    } else {
+                        true
+                    };
+
+                    if is_unmovable {
+                        return Ok(())
+                    }
+
+                    self.map.get_mut(&next).unwrap().object = if let Some(tile) = self.map.get_mut(&current) {
+                        tile.object.take()
+                    } else {
+                        return Ok(());
+                    };
+    
+                    if let Some(conn) = self.connections.remove(&current) {
+                        self.connections.insert(next, conn);
+                    }
+    
+                    let mut outgoing = packet::Outgoing::Move { id, x: next.0, y: next.1 }.serialize();
+    
+                    for conn in self.connections.values() {
+                        conn.try_write_one(&mut outgoing)?;
+                    }
+
+                    let job = Job::Move { current: next, tick: time::Duration::from_millis(1000) };
+
+                    let schedule = Schedule::new(job, Instant::now() + tick);
+
+                    self.schedule_queue.push(schedule);
+                }
+            },
+            _ => {}
         }
 
         Ok(())
     }
 
-    fn handle_packet(&mut self, packet: packet::Incoming, key: (i32, i32)) -> Result<(), Box<dyn Error>> {
+    fn handle_packet(&mut self, packet: packet::Incoming, current: (i32, i32)) -> Result<(), Box<dyn Error>> {
         match packet {
-            packet::Incoming::Hello { name } => {
-                let outgoing = packet::Outgoing::Welcome { name };
-
-                if let Some(conn) = self.connections.get(&key) {
-                    conn.try_write_line(&mut outgoing.serialize())?;
-                };
-            },
             packet::Incoming::Ping { timestamp } => {
                 let outgoing = packet::Outgoing::Pong { timestamp };
 
-                if let Some(conn) = self.connections.get(&key) {
-                    conn.try_write_line(&mut outgoing.serialize())?;
+                if let Some(conn) = self.connections.get(&current) {
+                    conn.try_write_one(&mut outgoing.serialize())?;
                 };
             },
             packet::Incoming::Move { direction } => {
-                
+                if let Some(tile) = self.map.get_mut(&current) {
+                    if let Some(Object::Human { state, .. }) = &mut tile.object {
+                        if direction == 0 {
+                            *state = HumanState::Idle;
+                        } else {
+                            *state = HumanState::Move { direction };
+                        }
+
+                        let job = Job::Move { current, tick: time::Duration::from_millis(1000) };
+
+                        let schedule = Schedule::now(job);
+        
+                        self.schedule_queue.push(schedule);
+                    }
+                }
             },
+            _ => {}
         };
 
         Ok(())
