@@ -3,12 +3,12 @@ use std::io;
 use tokio::net::TcpStream;
 
 pub struct Conn {
-    pub id: usize,
+    pub id: i32,
     stream: TcpStream,
 }
 
 impl Conn {
-    pub fn new(stream: TcpStream, id: usize) -> Conn {
+    pub fn new(stream: TcpStream, id: i32) -> Conn {
         println!("connection {id} accepted");
 
         Conn { stream, id }

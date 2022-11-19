@@ -51,7 +51,7 @@ impl Gatekeeper {
 
                     Ok::<&(i32, i32), Box<dyn Error>>(key)
                 }))) => {
-                    Job::Readable(key.clone())
+                    Job::Read(key.clone())
                 },
             })
         }
@@ -66,7 +66,7 @@ impl Gatekeeper {
         
                 self.connections.insert((-1,-1), conn);
             },
-            Job::Readable(key) => if let Some(conn) = self.connections.get(&key) {
+            Job::Read(key) => if let Some(conn) = self.connections.get(&key) {
                 let mut buf = vec![0 as u8; 2];
 
                 if let Err(e) = conn.try_read_one(&mut buf) {

@@ -4,8 +4,8 @@ use crate::common::Bytes;
 
 #[derive(Debug)]
 pub enum Incoming {
-    Hello { name: String },
     Ping { timestamp: i64 },
+    Hello { name: String },
     Move { direction: u8 }
 }
 
@@ -20,9 +20,9 @@ impl Incoming {
         let body = &buf[2..];
 
         match serial {
-            1 => Ok(Incoming::Hello { name: String::from_utf8_lossy(body.truncate_last()).into_owned() }),
-            3 => Ok(Self::Ping { timestamp: i64::from_le_bytes(body.clone_into_array()) }),
-            4 => match body[0] {
+            1 => Ok(Self::Ping { timestamp: i64::from_le_bytes(body.clone_into_array()) }),
+            2 => Ok(Incoming::Hello { name: String::from_utf8_lossy(body.truncate_last()).into_owned() }),
+            3 => match body[0] {
                 0 => Ok(Self::Move { direction: 0 }),
                 1 => Ok(Self::Move { direction: 1 }),
                 2 => Ok(Self::Move { direction: 2 }),
@@ -37,23 +37,31 @@ impl Incoming {
 
 #[derive(Debug)]
 pub enum Outgoing {
-    Welcome { id: usize, name: String },
     Pong { timestamp: i64 },
-    Move { id: usize, x: i32, y: i32 },
+    Hello { id: i32, name: String },
+    Connect { id: i32, x: i32, y: i32 },
+    Disconnect { id: i32 },
+    Move { id: i32, x: i32, y: i32 },
 }
 
 impl Outgoing {
     pub fn serialize(self) -> Vec<u8> {
         match self {
-            Outgoing::Welcome { id, name } => [
-                &(1 as u16).to_le_bytes() as &[u8],
-                &id.to_le_bytes(),
-                &name.as_bytes().to_sized(25),
-            ].concat(),
             Outgoing::Pong { timestamp } => [
                 &(3 as u16).to_le_bytes() as &[u8],
                 &timestamp.to_le_bytes(),
             ].concat(),
+            Outgoing::Hello { id, name } => [
+                &(1 as u16).to_le_bytes() as &[u8],
+                &id.to_le_bytes(),
+                &name.as_bytes().to_sized(25),
+            ].concat(),
+            Outgoing::Connect { id, x, y } => [
+                &id.to_le_bytes() as &[u8],
+                &x.to_le_bytes(),
+                &y.to_le_bytes(),
+            ].concat(),
+            Outgoing::Disconnect { id } => id.to_le_bytes().to_vec(),
             Outgoing::Move { id, x, y } => [
                 &(4 as u16).to_le_bytes() as &[u8],
                 &id.to_le_bytes(),

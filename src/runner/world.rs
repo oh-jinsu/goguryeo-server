@@ -16,13 +16,13 @@ pub struct Tile {
 
 pub enum Object {
     Human {
-        id: usize,
+        id: i32,
         state: HumanState,
     },
 }
 
 impl Object {
-    pub fn new_human(id: usize) -> Self {
+    pub fn new_human(id: i32) -> Self {
         Object::Human { id, state: HumanState::Idle }
     }
 }
@@ -84,7 +84,7 @@ impl World {
 
                     Ok::<&(i32, i32), Box<dyn Error>>(key)
                 }))) => {
-                    Job::Readable(key.clone())
+                    Job::Read(key.clone())
                 },
             })
         } else {
@@ -97,7 +97,7 @@ impl World {
 
                     Ok::<&(i32, i32), Box<dyn Error>>(key)
                 }))) => {
-                    Job::Readable(key.clone())
+                    Job::Read(key.clone())
                 },
                 _ = time::sleep_until(self.schedule_queue.peek().unwrap().deadline) => {
                     self.schedule_queue.pop().unwrap().job
@@ -117,7 +117,7 @@ impl World {
 
                         self.connections.insert(key.clone(), conn);
                         
-                        let mut outgoing = packet::Outgoing::Welcome { id, name: String::from("anonymous") }.serialize();
+                        let mut outgoing = packet::Outgoing::Connect { id, x: key.0, y: key.1 }.serialize();
 
                         for conn in self.connections.values() {
                             conn.try_write_one(&mut outgoing)?;
@@ -126,8 +126,27 @@ impl World {
                         return Ok(());
                     }
                 }
-            }
-            Job::Readable(key) => if let Some(conn) = self.connections.get(&key) {
+            },
+            Job::Drop(key) => {
+                if let Some(conn) = self.connections.remove(&key) {
+                    let id = conn.id;
+
+                    let mut outgoing = packet::Outgoing::Disconnect { id }.serialize();
+
+                    for (key, conn) in self.connections.iter() {
+                        if let Err(e) = conn.try_write_one(&mut outgoing) {
+                            eprintln!("{e}");
+
+                            let job = Job::Drop(*key);
+
+                            let schedule = Schedule::now(job);
+        
+                            self.schedule_queue.push(schedule);
+                        }
+                    }
+                }
+            },
+            Job::Read(key) => if let Some(conn) = self.connections.get(&key) {
                 let mut buf = vec![0 as u8; 2];
 
                 if let Err(e) = conn.try_read_one(&mut buf) {
@@ -152,7 +171,11 @@ impl World {
                 if let Err(e) = self.handle_packet(packet, key) {
                     eprintln!("{e}");
 
-                    self.connections.remove(&key);
+                    let job = Job::Drop(key);
+
+                    let schedule = Schedule::now(job);
+
+                    self.schedule_queue.push(schedule);
                 }
             },
             Job::Move { current, tick } => if let Some(tile) = self.map.get(&current) {

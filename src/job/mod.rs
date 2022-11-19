@@ -9,7 +9,8 @@ use crate::net::Conn;
 pub enum Job {
     Sleep(time::Duration),
     Accept(TcpStream),
-    Readable((i32, i32)),
+    Read((i32, i32)),
+    Drop((i32, i32)),
     Arrived(Conn),
     Move { current: (i32, i32), tick: time::Duration },
 }

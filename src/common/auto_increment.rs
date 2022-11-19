@@ -1,5 +1,5 @@
 pub struct AutoIncrement {
-    value: usize,
+    value: i32,
 }
 
 impl AutoIncrement {
@@ -7,7 +7,7 @@ impl AutoIncrement {
         AutoIncrement { value: 0 }
     }
 
-    pub fn take(&mut self) -> usize {
+    pub fn take(&mut self) -> i32 {
         self.value += 1;
 
         self.value
