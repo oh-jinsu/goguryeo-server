@@ -9,7 +9,7 @@ pub struct Conn {
 
 impl Conn {
     pub fn new(stream: TcpStream, id: i32) -> Conn {
-        println!("connection {id} accepted");
+        println!("connection {id} created");
 
         Conn { stream, id }
     }

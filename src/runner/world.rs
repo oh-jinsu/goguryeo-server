@@ -108,41 +108,37 @@ impl World {
 
     async fn handle_job(&mut self, job: Job) -> Result<(), Box<dyn Error>> {
         match job {
-            Job::Arrived(conn) => {
-                for (key, tile) in self.map.iter_mut() {
-                    if let None = tile.object {
-                        let id = conn.id;
-
-                        tile.object = Some(Object::new_human(id));
-
-                        self.connections.insert(key.clone(), conn);
-                        
-                        let mut outgoing = packet::Outgoing::Connect { id, x: key.0, y: key.1 }.serialize();
-
-                        for conn in self.connections.values() {
-                            conn.try_write_one(&mut outgoing)?;
-                        }
-
-                        return Ok(());
-                    }
-                }
-            },
-            Job::Drop(key) => {
-                if let Some(conn) = self.connections.remove(&key) {
+            Job::Arrived(conn) => for (key, tile) in self.map.iter_mut() {
+                if let None = tile.object {
                     let id = conn.id;
 
-                    let mut outgoing = packet::Outgoing::Disconnect { id }.serialize();
+                    tile.object = Some(Object::new_human(id));
 
-                    for (key, conn) in self.connections.iter() {
-                        if let Err(e) = conn.try_write_one(&mut outgoing) {
-                            eprintln!("{e}");
+                    self.connections.insert(key.clone(), conn);
+                    
+                    let mut outgoing = packet::Outgoing::Connect { id, x: key.0, y: key.1 }.serialize();
 
-                            let job = Job::Drop(*key);
+                    for conn in self.connections.values() {
+                        conn.try_write_one(&mut outgoing)?;
+                    }
 
-                            let schedule = Schedule::now(job);
-        
-                            self.schedule_queue.push(schedule);
-                        }
+                    return Ok(());
+                }
+            },
+            Job::Drop(key) =>  if let Some(conn) = self.connections.remove(&key) {
+                let id = conn.id;
+
+                let mut outgoing = packet::Outgoing::Disconnect { id }.serialize();
+
+                for (key, conn) in self.connections.iter() {
+                    if let Err(e) = conn.try_write_one(&mut outgoing) {
+                        eprintln!("{e}");
+
+                        let job = Job::Drop(*key);
+
+                        let schedule = Schedule::now(job);
+    
+                        self.schedule_queue.push(schedule);
                     }
                 }
             },
@@ -153,7 +149,7 @@ impl World {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         eprintln!("{e}");
 
-                        self.connections.remove(&key);
+                        return self.schedule_drop(key);
                     }
                 
                     return Ok(());
@@ -164,18 +160,14 @@ impl World {
                     Err(e) => {
                         eprintln!("{e}");
 
-                        return Ok(());
+                        return self.schedule_drop(key);
                     }
                 };
 
                 if let Err(e) = self.handle_packet(packet, key) {
                     eprintln!("{e}");
 
-                    let job = Job::Drop(key);
-
-                    let schedule = Schedule::now(job);
-
-                    self.schedule_queue.push(schedule);
+                    return self.schedule_drop(key);
                 }
             },
             Job::Move { current, tick } => if let Some(tile) = self.map.get(&current) {
@@ -240,32 +232,38 @@ impl World {
 
     fn handle_packet(&mut self, packet: packet::Incoming, current: (i32, i32)) -> Result<(), Box<dyn Error>> {
         match packet {
-            packet::Incoming::Ping { timestamp } => {
+            packet::Incoming::Ping { timestamp } => if let Some(conn) = self.connections.get(&current) {
                 let outgoing = packet::Outgoing::Pong { timestamp };
 
-                if let Some(conn) = self.connections.get(&current) {
-                    conn.try_write_one(&mut outgoing.serialize())?;
-                };
+                conn.try_write_one(&mut outgoing.serialize())?;
             },
-            packet::Incoming::Move { direction } => {
-                if let Some(tile) = self.map.get_mut(&current) {
-                    if let Some(Object::Human { state, .. }) = &mut tile.object {
-                        if direction == 0 {
-                            *state = HumanState::Idle;
-                        } else {
-                            *state = HumanState::Move { direction };
-                        }
-
-                        let job = Job::Move { current, tick: time::Duration::from_millis(1000) };
-
-                        let schedule = Schedule::now(job);
-        
-                        self.schedule_queue.push(schedule);
+            packet::Incoming::Move { direction } => if let Some(tile) = self.map.get_mut(&current) {
+                if let Some(Object::Human { state, .. }) = &mut tile.object {
+                    if direction == 0 {
+                        *state = HumanState::Idle;
+                    } else {
+                        *state = HumanState::Move { direction };
                     }
+
+                    let job = Job::Move { current, tick: time::Duration::from_millis(1000) };
+
+                    let schedule = Schedule::now(job);
+    
+                    self.schedule_queue.push(schedule);
                 }
             },
             _ => {}
         };
+
+        Ok(())
+    }
+
+    fn schedule_drop(&mut self, key: (i32, i32)) -> Result<(), Box<dyn Error>> {
+        let job = Job::Drop(key);
+
+        let schedule = Schedule::now(job);
+
+        self.schedule_queue.push(schedule);
 
         Ok(())
     }
