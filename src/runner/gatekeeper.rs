@@ -102,7 +102,13 @@ impl Gatekeeper {
 
     fn handle_packet(&mut self, packet: packet::Incoming, current: (i32, i32)) -> Result<(), Box<dyn Error>> {
         match packet {
-            packet::Incoming::Hello { .. } => if let Some(conn) = self.connections.remove(&current) {
+            packet::Incoming::Hello { name } => if let Some(conn) = self.connections.remove(&current) {
+                let id = conn.id;
+
+                let outgoing = packet::Outgoing::Hello { id, name };
+
+                conn.try_write_one(&mut outgoing.serialize())?;
+
                 let _ = self.sender.try_send(conn);
             },
             packet::Incoming::Ping { timestamp } => if let Some(conn) = self.connections.get(&current) {

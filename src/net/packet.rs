@@ -48,22 +48,26 @@ impl Outgoing {
     pub fn serialize(self) -> Vec<u8> {
         match self {
             Outgoing::Pong { timestamp } => [
-                &(3 as u16).to_le_bytes() as &[u8],
+                &(1 as u16).to_le_bytes() as &[u8],
                 &timestamp.to_le_bytes(),
             ].concat(),
             Outgoing::Hello { id, name } => [
-                &(1 as u16).to_le_bytes() as &[u8],
+                &(2 as u16).to_le_bytes() as &[u8],
                 &id.to_le_bytes(),
                 &name.as_bytes().to_sized(25),
             ].concat(),
             Outgoing::Connect { id, x, y } => [
-                &id.to_le_bytes() as &[u8],
+                &(3 as u16).to_le_bytes() as &[u8],
+                &id.to_le_bytes(),
                 &x.to_le_bytes(),
                 &y.to_le_bytes(),
             ].concat(),
-            Outgoing::Disconnect { id } => id.to_le_bytes().to_vec(),
-            Outgoing::Move { id, x, y } => [
+            Outgoing::Disconnect { id } => [
                 &(4 as u16).to_le_bytes() as &[u8],
+                &id.to_le_bytes(),
+            ].concat(),
+            Outgoing::Move { id, x, y } => [
+                &(5 as u16).to_le_bytes() as &[u8],
                 &id.to_le_bytes(),
                 &x.to_le_bytes(),
                 &y.to_le_bytes(),

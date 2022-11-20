@@ -125,7 +125,7 @@ impl World {
                     return Ok(());
                 }
             },
-            Job::Drop(key) =>  if let Some(conn) = self.connections.remove(&key) {
+            Job::Drop(key) => if let Some(conn) = self.connections.remove(&key) {
                 let id = conn.id;
 
                 let mut outgoing = packet::Outgoing::Disconnect { id }.serialize();
