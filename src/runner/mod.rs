@@ -1,6 +1,6 @@
 mod world;
 
-pub use world::World;
+pub use world::{World, Tile};
 
 mod gatekeeper;
 

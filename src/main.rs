@@ -1,6 +1,6 @@
-use std::error::Error;
+use std::{error::Error, collections::HashMap};
 
-use mmorpg::runner;
+use mmorpg::runner::{self, Tile};
 use tokio::{net::TcpListener, sync::mpsc, spawn};
 
 #[tokio::main]
@@ -15,7 +15,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let _ = gatekeeper.run().await;
     });
 
-    let world = runner::World::new(rx);
+    let mut map = HashMap::new();
+    
+    for x in 0..100 {
+        for y in 0..100 {
+            map.insert((x, y), Tile { object: None });
+        }
+    }
+
+    let world = runner::World::new(map, rx);
 
     world.run().await
 }
