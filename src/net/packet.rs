@@ -21,7 +21,7 @@ impl Incoming {
 
         match serial {
             1 => Ok(Self::Ping { timestamp: i64::from_le_bytes(body.clone_into_array()) }),
-            2 => Ok(Incoming::Hello { name: String::from_utf8_lossy(body.truncate_last()).into_owned() }),
+            2 => Ok(Incoming::Hello { name: String::from_utf8_lossy(body).into_owned() }),
             3 => match body[0] {
                 0 => Ok(Self::Move { direction: 0 }),
                 1 => Ok(Self::Move { direction: 1 }),
@@ -39,10 +39,11 @@ impl Incoming {
 pub enum Outgoing {
     Pong { timestamp: i64 },
     Hello { id: i32, name: String },
-    Connect { id: i32, x: i32, y: i32 },
+    Connect { id: i32, x: i32, z: i32 },
     Disconnect { id: i32 },
-    Move { id: i32, x: i32, y: i32 },
-    Introduce { users: Vec<(i32, i32, i32)> }
+    Introduce { users: Vec<(i32, i32, i32)> },
+    Move { id: i32, x: i32, z: i32, tick: i64 },
+    Arrive { id: i32, x: i32, z: i32 },
 }
 
 impl Outgoing {
@@ -55,31 +56,38 @@ impl Outgoing {
             Outgoing::Hello { id, name } => [
                 &[2 as u8, 0] as &[u8],
                 &id.to_le_bytes(),
-                &name.as_bytes().to_sized(25),
+                &name.as_bytes(),
             ].concat(),
-            Outgoing::Connect { id, x, y } => [
+            Outgoing::Connect { id, x, z } => [
                 &[3 as u8, 0] as &[u8],
                 &id.to_le_bytes(),
                 &x.to_le_bytes(),
-                &y.to_le_bytes(),
+                &z.to_le_bytes(),
             ].concat(),
             Outgoing::Disconnect { id } => [
                 &[4 as u8, 0] as &[u8],
                 &id.to_le_bytes(),
             ].concat(),
-            Outgoing::Move { id, x, y } => [
-                &[5 as u8, 0] as &[u8],
-                &id.to_le_bytes(),
-                &x.to_le_bytes(),
-                &y.to_le_bytes(),
-            ].concat(),
             Outgoing::Introduce { users } => [
-                &[6 as u8, 0] as &[u8],
+                &[5 as u8, 0] as &[u8],
                 &users.iter().flat_map(|(id, x, y)| [
                     &id.to_le_bytes() as &[u8],
                     &x.to_le_bytes(),
                     &y.to_le_bytes(),
                 ].concat()).collect::<Vec<u8>>()
+            ].concat(),
+            Outgoing::Move { id, x, z, tick } => [
+                &[6 as u8, 0] as &[u8],
+                &id.to_le_bytes(),
+                &x.to_le_bytes(),
+                &z.to_le_bytes(),
+                &tick.to_le_bytes(),
+            ].concat(),
+            Outgoing::Arrive { id, x, z } => [
+                &[7 as u8, 0] as &[u8],
+                &id.to_le_bytes(),
+                &x.to_le_bytes(),
+                &z.to_le_bytes(),
             ].concat(),
         }
     }

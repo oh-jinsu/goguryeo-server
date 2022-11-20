@@ -108,7 +108,7 @@ impl World {
                    
                     let mut users = vec![(id, current.0, current.1)];
 
-                    let mut connect = packet::Outgoing::Connect { id, x: current.0, y: current.1 }.serialize();
+                    let mut connect = packet::Outgoing::Connect { id, x: current.0, z: current.1 }.serialize();
 
                     for (other, conn) in self.connections.iter() {
                         if let Err(e) = conn.try_write_one(&mut connect) {
@@ -186,19 +186,29 @@ impl World {
 
                     let next = match state {
                         HumanState::Move { direction, moved_at } => {
-                            let (x, y) = current;
+                            let (x, z) = current;
             
                             moved_at.replace(time::Instant::now());
 
                             match direction {
-                                1 => (x, y + 1),
-                                2 => (x, y - 1),
-                                3 => (x - 1, y),
-                                4 => (x + 1, y),
+                                1 => (x, z + 1),
+                                2 => (x, z - 1),
+                                3 => (x - 1, z),
+                                4 => (x + 1, z),
                                 _ => return Ok(())
                             }
                         },
-                        _ => {
+                        HumanState::Idle { .. } => {
+                            let mut outgoing = packet::Outgoing::Arrive { id, x: current.0, z: current.1 }.serialize();
+
+                            for (key, conn) in self.connections.iter() {
+                                if let Err(e) = conn.try_write_one(&mut outgoing) {
+                                    eprintln!("{e}");
+            
+                                    return Self::schedule_drop(&mut self.schedule_queue, *key);
+                                }
+                            }
+
                             return Ok(());
                         },
                     };
@@ -222,11 +232,15 @@ impl World {
                     if let Some(conn) = self.connections.remove(&current) {
                         self.connections.insert(next, conn);
                     }
+
+                    let mut outgoing = packet::Outgoing::Move { id, x: next.0, z: next.1, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
+
+                    for (key, conn) in self.connections.iter() {
+                        if let Err(e) = conn.try_write_one(&mut outgoing) {
+                            eprintln!("{e}");
     
-                    let mut outgoing = packet::Outgoing::Move { id, x: next.0, y: next.1 }.serialize();
-    
-                    for conn in self.connections.values() {
-                        conn.try_write_one(&mut outgoing)?;
+                            return Self::schedule_drop(&mut self.schedule_queue, *key);
+                        }
                     }
 
                     let job = Job::Move { current: next, tick };
@@ -263,7 +277,7 @@ impl World {
                             return Ok(());
                         };
 
-                        let tick = time::Duration::from_millis(1000);
+                        let tick = time::Duration::from_millis(300);
 
                         let now = time::Instant::now();
 
