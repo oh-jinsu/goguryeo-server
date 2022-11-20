@@ -36,7 +36,8 @@ pub struct World {
     schedule_queue: BinaryHeap<Schedule>,
     receiver: mpsc::Receiver<Conn>,
     connections: HashMap<(i32, i32), Conn>,
-    map: HashMap<(i32, i32), Tile>
+    map: HashMap<(i32, i32), Tile>,
+    pointed_at: Option<time::Instant>,
 }
 
 impl World {
@@ -46,6 +47,7 @@ impl World {
             receiver,
             connections: HashMap::new(),
             map,
+            pointed_at: None,
         }
     }
 
@@ -114,7 +116,7 @@ impl World {
                         if let Err(e) = conn.try_write_one(&mut connect) {
                             eprintln!("{e}");
     
-                            Self::schedule_drop(&mut self.schedule_queue, *other)?;
+                            Self::schedule_drop(&mut self.schedule_queue, *other);
 
                             continue;
                         }
@@ -127,7 +129,9 @@ impl World {
                     if let Err(e) = conn.try_write_one(&mut introduce) {
                         eprintln!("{e}");
 
-                        return Self::schedule_drop(&mut self.schedule_queue, *current);
+                        Self::schedule_drop(&mut self.schedule_queue, *current);
+
+                        return Ok(());
                     }
 
                     self.connections.insert(current.clone(), conn);
@@ -148,7 +152,7 @@ impl World {
                     if let Err(e) = conn.try_write_one(&mut outgoing) {
                         eprintln!("{e}");
 
-                        return Self::schedule_drop(&mut self.schedule_queue, *key);
+                        Self::schedule_drop(&mut self.schedule_queue, *key);
                     }
                 }
             },
@@ -159,7 +163,9 @@ impl World {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         eprintln!("{e}");
 
-                        return Self::schedule_drop(&mut self.schedule_queue, key);
+                        Self::schedule_drop(&mut self.schedule_queue, key);
+
+                        return Ok(());
                     }
                 
                     return Ok(());
@@ -170,82 +176,48 @@ impl World {
                     Err(e) => {
                         eprintln!("{e}");
 
-                        return Self::schedule_drop(&mut self.schedule_queue, key);
+                        Self::schedule_drop(&mut self.schedule_queue, key);
+
+                        return Ok(());
                     }
                 };
 
                 if let Err(e) = self.handle_packet(packet, key) {
                     eprintln!("{e}");
 
-                    return Self::schedule_drop(&mut self.schedule_queue, key);
+                    Self::schedule_drop(&mut self.schedule_queue, key);
+
+                    return Ok(());
                 }
             },
-            Job::Move { current, tick } => if let Some(tile) = self.map.get_mut(&current) {
+            Job::KeepMove { from, tick } => if let Some(tile) = self.map.get_mut(&from) {
                 if let Some(Object::Human { id, state }) = &mut tile.object {
                     let id = id.clone();
 
-                    let next = match state {
-                        HumanState::Move { direction, moved_at } => {
-                            let (x, z) = current;
-            
-                            moved_at.replace(time::Instant::now());
-
-                            match direction {
-                                1 => (x, z + 1),
-                                2 => (x, z - 1),
-                                3 => (x - 1, z),
-                                4 => (x + 1, z),
-                                _ => return Ok(())
-                            }
-                        },
+                    match state {
                         HumanState::Idle { .. } => {
-                            let mut outgoing = packet::Outgoing::Arrive { id, x: current.0, z: current.1 }.serialize();
+                            let mut outgoing = packet::Outgoing::Arrive { id, x: from.0, z: from.1 }.serialize();
 
                             for (key, conn) in self.connections.iter() {
                                 if let Err(e) = conn.try_write_one(&mut outgoing) {
                                     eprintln!("{e}");
             
-                                    return Self::schedule_drop(&mut self.schedule_queue, *key);
+                                    Self::schedule_drop(&mut self.schedule_queue, *key);
                                 }
                             }
-
-                            return Ok(());
                         },
-                    };
+                        HumanState::Move { direction, moved_at } => {
+                            let direction = direction.clone();
 
-                    let is_unmovable = if let Some(tile) = self.map.get(&next) {
-                        tile.object.is_some()
-                    } else {
-                        true
-                    };
+                            moved_at.replace(time::Instant::now());
 
-                    if is_unmovable {
-                        return Ok(())
+                            if let Some(next) = self.handle_move(id, from, direction, tick) {
+                                let job = Job::KeepMove { from: next, tick };
+        
+                                self.schedule_queue.push(Schedule::new(job, Instant::now() + tick));
+                            }
+                        },
                     }
-
-                    self.map.get_mut(&next).unwrap().object = if let Some(tile) = self.map.get_mut(&current) {
-                        tile.object.take()
-                    } else {
-                        return Ok(());
-                    };
-    
-                    if let Some(conn) = self.connections.remove(&current) {
-                        self.connections.insert(next, conn);
-                    }
-
-                    let mut outgoing = packet::Outgoing::Move { id, x: next.0, z: next.1, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
-
-                    for (key, conn) in self.connections.iter() {
-                        if let Err(e) = conn.try_write_one(&mut outgoing) {
-                            eprintln!("{e}");
-    
-                            return Self::schedule_drop(&mut self.schedule_queue, *key);
-                        }
-                    }
-
-                    let job = Job::Move { current: next, tick };
-
-                    self.schedule_queue.push(Schedule::new(job, Instant::now() + tick));
                 }
             },
             _ => {}
@@ -262,7 +234,11 @@ impl World {
                 conn.try_write_one(&mut outgoing.serialize())?;
             },
             packet::Incoming::Move { direction } => if let Some(tile) = self.map.get_mut(&current) {
-                if let Some(Object::Human { state, .. }) = &mut tile.object { 
+                self.pointed_at = Some(time::Instant::now());
+
+                if let Some(Object::Human { id, state }) = &mut tile.object { 
+                    let id = id.clone();
+
                     if direction == 0 {
                         *state = HumanState::Idle { moved_at: *match state {
                             HumanState::Idle { moved_at } => moved_at,
@@ -292,9 +268,11 @@ impl World {
 
                         *state = HumanState::Move { direction, moved_at: Some(now) };
 
-                        let job = Job::Move { current, tick };
-        
-                        self.schedule_queue.push(Schedule::now(job));
+                        if let Some(next) = self.handle_move(id, current, direction, tick) {
+                            let job = Job::KeepMove { from: next, tick };
+    
+                            self.schedule_queue.push(Schedule::new(job, Instant::now() + tick));
+                        }
                     }
                 }
             },
@@ -304,13 +282,59 @@ impl World {
         Ok(())
     }
 
-    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule>, key: (i32, i32)) -> Result<(), Box<dyn Error>> {
+    fn handle_move(&mut self, id: i32, current: (i32, i32), direction: u8,  tick: time::Duration) -> Option<(i32, i32)> {
+        let (x, z) = current;
+        
+        let next = match direction {
+            1 => (x, z + 1),
+            2 => (x, z - 1),
+            3 => (x - 1, z),
+            4 => (x + 1, z),
+            _ => return None
+        };
+
+        let is_unmovable = if let Some(tile) = self.map.get(&next) {
+            tile.object.is_some()
+        } else {
+            true
+        };
+
+        if is_unmovable {
+            return None;
+        }
+
+        self.map.get_mut(&next).unwrap().object = if let Some(tile) = self.map.get_mut(&current) {
+            tile.object.take()
+        } else {
+            return None;
+        };
+
+        if let Some(conn) = self.connections.remove(&current) {
+            self.connections.insert(next, conn);
+        }
+
+        let mut outgoing = packet::Outgoing::Move { id, x: next.0, z: next.1, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
+
+        for (key, conn) in self.connections.iter() {
+            if let Err(e) = conn.try_write_one(&mut outgoing) {
+                eprintln!("{e}");
+
+                Self::schedule_drop(&mut self.schedule_queue, *key);
+
+                continue;
+            }
+        }
+
+        println!("{:?}", self.pointed_at.take().map(|at| at.elapsed()) );
+
+        return Some(next);
+    }
+
+    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule>, key: (i32, i32)) {
         let job = Job::Drop(key);
 
         let schedule = Schedule::now(job);
 
         schedule_queue.push(schedule);
-
-        Ok(())
     }
 }
