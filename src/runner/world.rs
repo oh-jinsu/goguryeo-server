@@ -249,19 +249,28 @@ impl World {
             },
             packet::Incoming::Move { direction } => if let Some(tile) = self.map.get_mut(&current) {
                 if let Some(Object::Human { state, .. }) = &mut tile.object { 
-                    let tick = time::Duration::from_millis(1000);
-
-                    let now = time::Instant::now();
-
-                    let moved_at = match state {
-                        HumanState::Idle { moved_at } => moved_at,
-                        HumanState::Move { moved_at, .. } => moved_at,
-                    };
-
                     if direction == 0 {
-                        *state = HumanState::Idle { moved_at: *moved_at };
+                        *state = HumanState::Idle { moved_at: *match state {
+                            HumanState::Idle { moved_at } => moved_at,
+                            HumanState::Move { moved_at, .. } => moved_at,
+                        }};
                     } else {
-                        if let Some(moved_at) = moved_at {
+                        if let HumanState::Move { direction: old_direction, moved_at } = state {
+                            if *old_direction != direction {
+                                *state = HumanState::Move { direction, moved_at: *moved_at };
+                            }
+
+                            return Ok(());
+                        };
+
+                        let tick = time::Duration::from_millis(1000);
+
+                        let now = time::Instant::now();
+
+                        if let Some(moved_at) = match state {
+                            HumanState::Idle { moved_at } => moved_at,
+                            HumanState::Move { moved_at, .. } => moved_at,
+                        } {
                             if now < moved_at.to_owned() + tick {
                                 return Ok(())
                             }
