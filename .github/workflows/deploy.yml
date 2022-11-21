@@ -1,0 +1,108 @@
+name: Deploy
+
+on:
+  push:
+    branches: 
+      - main
+      - dev
+
+concurrency:
+  group: "deploy"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      APPLICATION_NAME: ${{ github.event.repository.name }}-${{ github.ref_name }}
+      CONTAINER_NAME: ${{ github.event.repository.name }}-${{ github.ref_name }}:${{ github.sha }}
+      ECR_PREFFIX: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+      IAM_ROLE_PREFFIX: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role
+      ECS_CLUSTER: arn:aws:ecs:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:cluster/${{ secrets.ECS_CLUSTER_NAME }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Make the ECR repository if it does not exist
+        run: aws ecr describe-repositories --repository-names ${{ env.APPLICATION_NAME }} || aws ecr create-repository --repository-name ${{ env.APPLICATION_NAME }} --image-scanning-configuration scanOnPush=true --image-tag-mutability IMMUTABLE
+
+      - name: Build the Docker image
+        run: docker build -t ${{ env.CONTAINER_NAME }} .
+
+      - name: Tag the Docker image
+        run: docker tag ${{ env.CONTAINER_NAME }} ${{ env.ECR_PREFFIX }}/${{ env.CONTAINER_NAME }}
+
+      - name: Push the Docker image
+        run: docker push ${{ env.ECR_PREFFIX }}/${{ env.CONTAINER_NAME }}
+
+      - name: Register the ECS task definition
+        env:
+          CONTAINER_CPU: 512
+          CONTAINER_MEMORY: 1024
+          CONTAINER_PORT: 3000
+          HOST_PORT: 3000
+        run: |
+          aws ecs register-task-definition \
+            --family $APPLICATION_NAME \
+            --container-definitions '[{
+              "name": "${{ env.APPLICATION_NAME }}",
+              "image": "${{ env.ECR_PREFFIX }}/${{ env.CONTAINER_NAME }}",
+              "cpu": 0,
+              "links": [],
+              "portMappings": [{
+                "containerPort": ${{ env.CONTAINER_PORT }},
+                "hostPort": ${{ env.HOST_PORT }},
+                "protocol": "tcp"
+              }],
+              "essential": true,
+              "entryPoint": [],
+              "command": [],
+              "environment": [],
+              "environmentFiles": [],
+              "mountPoints": [],
+              "volumesFrom": [],
+              "secrets": [],
+              "dnsServers": [],
+              "dnsSearchDomains": [],
+              "extraHosts": [],
+              "dockerSecurityOptions": [],
+              "dockerLabels": {},
+              "ulimits": [],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-create-group": "true",
+                  "awslogs-group": "/ecs/${{ env.APPLICATION_NAME }}",
+                  "awslogs-region": "${{ secrets.AWS_REGION }}",
+                  "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+              }
+            }]' \
+            --task-role-arn $IAM_ROLE_PREFFIX/ecsTaskExecutionRole \
+            --execution-role-arn $IAM_ROLE_PREFFIX/ecsTaskExecutionRole \
+            --network-mode awsvpc \
+            --requires-compatibilities FARGATE \
+            --runtime-platform cpuArchitecture=X86_64,operatingSystemFamily=LINUX \
+            --cpu $CONTAINER_CPU \
+            --memory $CONTAINER_MEMORY
+
+      - name: Update the ECS service
+        env:
+          CLUSTER_NAME: rpg-server
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $APPLICATION_NAME \
+            --task-definition $APPLICATION_NAME

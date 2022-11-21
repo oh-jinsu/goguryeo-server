@@ -12,7 +12,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let gatekeeper = Gatekeeper::new(listener, tx);
 
     spawn(async move {
-        let _ = gatekeeper.run().await;
+        if let Err(e) = gatekeeper.run().await {
+            eprintln!("{e}");
+        }
     });
 
     let mut map = HashMap::new();
