@@ -38,7 +38,6 @@ pub struct World {
     receiver: mpsc::Receiver<Conn>,
     connections: HashMap<(i32, i32), Conn>,
     map: HashMap<(i32, i32), Tile>,
-    pointed_at: Option<time::Instant>,
 }
 
 impl World {
@@ -48,7 +47,6 @@ impl World {
             receiver,
             connections: HashMap::new(),
             map,
-            pointed_at: None,
         }
     }
 

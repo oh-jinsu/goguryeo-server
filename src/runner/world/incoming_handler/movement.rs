@@ -1,35 +1,7 @@
 use std::error::Error;
 use tokio::time;
 
-use crate::{net::packet, job::{Schedule, Job}};
-
-use super::{World, Object, HumanState};
-
-pub fn handle(packet: packet::Incoming, current: (i32, i32), context: &mut World) -> Result<(), Box<dyn Error>> {
-    match packet {
-        packet::Incoming::Ping { timestamp } => handle_ping(timestamp, current, context),
-        packet::Incoming::Move { direction } => handle_move(direction, current, context),
-        _ => Ok(())
-    }
-}
-
-///
-/// Handle the request for ping.
-/// 
-/// Just return the passed timestamp to the connection.
-/// 
-pub fn handle_ping(timestamp: i64, current: (i32, i32), context: &mut World) -> Result<(), Box<dyn Error>> {
-    let conn = match context.connections.get(&current) {
-        Some(conn) => conn,
-        None => return Ok(())
-    };
-
-    let outgoing = packet::Outgoing::Pong { timestamp };
-
-    conn.try_write_one(&mut outgoing.serialize())?;
-
-    Ok(())
-}
+use crate::{runner::{World, world::{Object, HumanState}}, job::{Schedule, Job}};
 
 ///
 /// Handle the request for move.
@@ -37,9 +9,7 @@ pub fn handle_ping(timestamp: i64, current: (i32, i32), context: &mut World) -> 
 /// Change the state of the human object, and
 /// let a job execute the actual position swtiching.
 /// 
-pub fn handle_move(direction: u8, current: (i32, i32), context: &mut World) -> Result<(), Box<dyn Error>> {
-    context.pointed_at = Some(time::Instant::now());
-
+pub fn handle(direction: u8, current: (i32, i32), context: &mut World) -> Result<(), Box<dyn Error>> {
     if let Some(tile) = context.map.get_mut(&current) {
         if let Some(Object::Human { state, .. }) = &mut tile.object {
             if direction == 0 {
