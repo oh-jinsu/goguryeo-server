@@ -1,7 +1,7 @@
 use std::error::Error;
 use tokio::time;
 
-use crate::{runner::{World, world::{Object, HumanState}}, job::{Schedule, Job}};
+use crate::{world::{World, Object, HumanState, job::Job}, schedule::{Schedule}};
 
 ///
 /// Handle the request for move.

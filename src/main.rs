@@ -1,6 +1,6 @@
 use std::{error::Error, collections::HashMap};
 
-use mmorpg::runner::{self, Tile};
+use mmorpg::{gatekeeper::Gatekeeper, world::{World, Tile}};
 use tokio::{net::TcpListener, sync::mpsc, spawn};
 
 #[tokio::main]
@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (tx, rx) = mpsc::channel(16);
     
-    let gatekeeper = runner::Gatekeeper::new(listener, tx);
+    let gatekeeper = Gatekeeper::new(listener, tx);
 
     spawn(async move {
         let _ = gatekeeper.run().await;
@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let world = runner::World::new(map, rx);
+    let world = World::new(map, rx);
 
     world.run().await
 }

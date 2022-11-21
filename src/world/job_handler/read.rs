@@ -2,8 +2,7 @@ use std::error::Error;
 use std::io;
 
 use crate::net::packet;
-use crate::runner::World;
-use crate::runner::world::incoming_handler;
+use crate::world::{World, incoming_handler};
 
 ///
 /// Read from a connection

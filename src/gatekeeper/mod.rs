@@ -1,3 +1,6 @@
+mod job;
+
+use std::net::SocketAddr;
 use std::{error::Error, io};
 use std::collections::HashMap;
 
@@ -5,12 +8,14 @@ use futures::future::select_all;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::{common::AutoIncrement, net::{Conn, packet}, job::Job};
+use crate::{common::AutoIncrement, net::{Conn, packet}};
+
+use self::job::Job;
 
 pub struct Gatekeeper {
     auto_increment: AutoIncrement,
     listener: TcpListener,
-    connections: HashMap<(i32, i32), Conn>,
+    connections: HashMap<SocketAddr, Conn>,
     sender: mpsc::Sender<Conn>
 }
 
@@ -36,22 +41,22 @@ impl Gatekeeper {
 
     async fn select_job(&mut self) -> Option<Job> {
         if self.connections.is_empty() {
-            if let Ok((stream, _)) = self.listener.accept().await {
-                Some(Job::Accept(stream))
+            if let Ok(conn) = self.listener.accept().await {
+                Some(Job::Accept(conn))
             } else {
                 None
             }
         } else {
             Some(tokio::select! {
-                Ok((stream, _)) = self.listener.accept() => {
-                    Job::Accept(stream)
+                Ok(conn) = self.listener.accept() => {
+                    Job::Accept(conn)
                 },
-                (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
+                (Ok(addr), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
                     conn.readable().await?;
 
-                    Ok::<&(i32, i32), Box<dyn Error>>(key)
+                    Ok::<&SocketAddr, Box<dyn Error>>(key)
                 }))) => {
-                    Job::Read(key.clone())
+                    Job::Read(addr.clone())
                 },
             })
         }
@@ -59,21 +64,21 @@ impl Gatekeeper {
 
     async fn handle_job(&mut self, job: Job) -> Result<(), Box<dyn Error>> {
         match job {
-            Job::Accept(stream) => {
+            Job::Accept((stream, addr)) => {
                 let id = self.auto_increment.take();
 
                 let conn = Conn::new(stream, id);
         
-                self.connections.insert((-1,-1), conn);
+                self.connections.insert(addr, conn);
             },
-            Job::Read(key) => if let Some(conn) = self.connections.get(&key) {
+            Job::Read(addr) => if let Some(conn) = self.connections.get(&addr) {
                 let mut buf = vec![0 as u8; 2];
 
                 if let Err(e) = conn.try_read_one(&mut buf) {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         eprintln!("{e}");
 
-                        self.connections.remove(&key);
+                        self.connections.remove(&addr);
                     }
                 
                     return Ok(());
@@ -88,30 +93,27 @@ impl Gatekeeper {
                     }
                 };
 
-                if let Err(e) = self.handle_packet(packet, key) {
+                if let Err(e) = self.handle_packet(packet, addr) {
                     eprintln!("{e}");
 
-                    self.connections.remove(&key);
+                    self.connections.remove(&addr);
                 }
             },
-            _ => {}
         }
 
         Ok(())
     }
 
-    fn handle_packet(&mut self, packet: packet::Incoming, current: (i32, i32)) -> Result<(), Box<dyn Error>> {
+    fn handle_packet(&mut self, packet: packet::Incoming, addr: SocketAddr) -> Result<(), Box<dyn Error>> {
         match packet {
-            packet::Incoming::Hello { name } => if let Some(conn) = self.connections.remove(&current) {
-                let id = conn.id;
-
-                let outgoing = packet::Outgoing::Hello { id, name };
+            packet::Incoming::Hello { name } => if let Some(conn) = self.connections.remove(&addr) {
+                let outgoing = packet::Outgoing::Hello { id: conn.id, name };
 
                 conn.try_write_one(&mut outgoing.serialize())?;
 
                 let _ = self.sender.try_send(conn);
             },
-            packet::Incoming::Ping { timestamp } => if let Some(conn) = self.connections.get(&current) {
+            packet::Incoming::Ping { timestamp } => if let Some(conn) = self.connections.get(&addr) {
                 let outgoing = packet::Outgoing::Pong { timestamp };
 
                 conn.try_write_one(&mut outgoing.serialize())?;

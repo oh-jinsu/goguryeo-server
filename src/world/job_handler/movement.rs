@@ -2,7 +2,7 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{runner::{world::{HumanState, Object}, World}, job::{Job, Schedule}, net::packet};
+use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::packet};
 
 ///
 /// Switch the position of an object.

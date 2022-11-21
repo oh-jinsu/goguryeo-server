@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{runner::World, net::packet};
+use crate::{world::World, net::packet};
 
 ///
 /// Drop a connection

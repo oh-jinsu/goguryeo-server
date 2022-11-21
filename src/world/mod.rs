@@ -1,5 +1,6 @@
 mod incoming_handler;
 mod job_handler;
+mod job;
 
 use std::error::Error;
 use std::collections::{BinaryHeap, HashMap};
@@ -8,8 +9,9 @@ use futures::future::select_all;
 use tokio::sync::mpsc;
 use tokio::time::{self, Instant};
 
-use crate::job::Job;
-use crate::{job::Schedule, net::Conn};
+use crate::{schedule::Schedule, net::Conn};
+
+use self::job::Job;
 
 pub struct Tile {
     pub object: Option<Object>
@@ -34,7 +36,7 @@ pub enum HumanState {
 }
 
 pub struct World {
-    schedule_queue: BinaryHeap<Schedule>,
+    schedule_queue: BinaryHeap<Schedule<Job>>,
     receiver: mpsc::Receiver<Conn>,
     connections: HashMap<(i32, i32), Conn>,
     map: HashMap<(i32, i32), Tile>,
@@ -111,7 +113,7 @@ impl World {
         })
     }
 
-    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule>, key: (i32, i32)) {
+    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, key: (i32, i32)) {
         let job = Job::Drop(key);
 
         let schedule = Schedule::now(job);

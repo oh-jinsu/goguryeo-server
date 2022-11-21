@@ -1,7 +1,6 @@
 use std::error::Error;
-use crate::job::Job;
 
-use super::World;
+use super::{World, job::Job};
 
 mod welcome;
 mod drop;
@@ -17,6 +16,5 @@ pub fn handle(context: &mut World, job: Job) -> Result<(), Box<dyn Error>> {
         Job::Drop(key) => drop::handle(key, context),
         Job::Read(key) => read::handle(key, context),
         Job::Move { from, tick } => movement::handle(from, tick, context),
-        _ => Ok(())
     }
 }

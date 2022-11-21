@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{net::{Conn, packet}, runner::{World, world::Object}};
+use crate::{net::{Conn, packet}, world::{World, Object}};
 
 /// 
 /// Welcome a conection.

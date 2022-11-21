@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::{runner::World, net::packet};
+use crate::{world::World, net::packet};
 
 ///
 /// Handle the request for ping.
