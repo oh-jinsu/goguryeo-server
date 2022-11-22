@@ -96,6 +96,12 @@ impl World {
     }
 
     async fn select_with_all(&mut self) -> Option<Job> {
+        let first_schedule = self.schedule_queue.peek().unwrap();
+
+        if first_schedule.deadline < time::Instant::now() {
+            return Some(self.schedule_queue.pop().unwrap().job);
+        }
+
         Some(tokio::select! {
             Some(conn) = self.receiver.recv() => {
                 Job::Welcome(conn)
@@ -107,7 +113,7 @@ impl World {
             }))) => {
                 Job::Read(key.clone())
             },
-            _ = time::sleep_until(self.schedule_queue.peek().unwrap().deadline) => {
+            _ = time::sleep_until(first_schedule.deadline) => {
                 self.schedule_queue.pop().unwrap().job
             },
         })
