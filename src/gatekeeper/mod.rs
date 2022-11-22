@@ -8,7 +8,8 @@ use futures::future::select_all;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::{common::AutoIncrement, net::{Conn, packet}};
+use crate::net::packet;
+use crate::{common::AutoIncrement, net::Conn};
 
 use self::job::Job;
 

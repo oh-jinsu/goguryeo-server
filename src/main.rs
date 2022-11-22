@@ -1,6 +1,6 @@
 use std::{error::Error, collections::HashMap};
 
-use mmorpg::{gatekeeper::Gatekeeper, world::{World, Tile}};
+use mmorpg::{gatekeeper::Gatekeeper, world::{World, Tile}, common::math::Vector3};
 use tokio::{net::TcpListener, sync::mpsc, spawn};
 
 #[tokio::main]
@@ -20,8 +20,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut map = HashMap::new();
     
     for x in 0..100 {
-        for y in 0..100 {
-            map.insert((x, y), Tile { object: None });
+        for z in 0..100 {
+            map.insert(Vector3::new(x, 0, z), Tile { object: None });
         }
     }
 

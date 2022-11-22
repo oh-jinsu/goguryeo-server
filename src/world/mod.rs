@@ -9,6 +9,7 @@ use futures::future::select_all;
 use tokio::sync::mpsc;
 use tokio::time::{self, Instant};
 
+use crate::common::math::Vector3;
 use crate::{schedule::Schedule, net::Conn};
 
 use self::job::Job;
@@ -38,12 +39,12 @@ pub enum HumanState {
 pub struct World {
     schedule_queue: BinaryHeap<Schedule<Job>>,
     receiver: mpsc::Receiver<Conn>,
-    connections: HashMap<(i32, i32), Conn>,
-    map: HashMap<(i32, i32), Tile>,
+    connections: HashMap<Vector3, Conn>,
+    map: HashMap<Vector3, Tile>,
 }
 
 impl World {
-    pub fn new(map: HashMap<(i32, i32), Tile>, receiver: mpsc::Receiver<Conn>) -> Self {
+    pub fn new(map: HashMap<Vector3, Tile>, receiver: mpsc::Receiver<Conn>) -> Self {
         World {
             schedule_queue: BinaryHeap::new(),
             receiver,
@@ -88,7 +89,7 @@ impl World {
             (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
                 conn.readable().await?;
 
-                Ok::<&(i32, i32), Box<dyn Error>>(key)
+                Ok::<&Vector3, Box<dyn Error>>(key)
             }))) => {
                 Job::Read(key.clone())
             },
@@ -96,6 +97,12 @@ impl World {
     }
 
     async fn select_with_all(&mut self) -> Option<Job> {
+        let first_schedule = self.schedule_queue.peek().unwrap();
+
+        if first_schedule.deadline < time::Instant::now() {
+            return Some(self.schedule_queue.pop().unwrap().job);
+        }
+
         Some(tokio::select! {
             Some(conn) = self.receiver.recv() => {
                 Job::Welcome(conn)
@@ -103,17 +110,17 @@ impl World {
             (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
                 conn.readable().await?;
 
-                Ok::<&(i32, i32), Box<dyn Error>>(key)
+                Ok::<&Vector3, Box<dyn Error>>(key)
             }))) => {
                 Job::Read(key.clone())
             },
-            _ = time::sleep_until(self.schedule_queue.peek().unwrap().deadline) => {
+            _ = time::sleep_until(first_schedule.deadline) => {
                 self.schedule_queue.pop().unwrap().job
             },
         })
     }
 
-    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, key: (i32, i32)) {
+    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, key: Vector3) {
         let job = Job::Drop(key);
 
         let schedule = Schedule::now(job);

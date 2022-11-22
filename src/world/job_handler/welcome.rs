@@ -11,20 +11,20 @@ pub fn handle(conn: Conn, context: &mut World) -> Result<(), Box<dyn Error>> {
 
             tile.object = Some(Object::new_human(id));
             
-            let mut users = vec![(id, current.0, current.1)];
+            let mut users = vec![(id, current.x, current.y, current.z)];
 
-            let mut connect = packet::Outgoing::Connect { id, x: current.0, z: current.1 }.serialize();
+            let mut connect = packet::Outgoing::Connect { id, x: current.x, y: current.y, z: current.z }.serialize();
 
-            for (other, conn) in context.connections.iter() {
+            for (position, conn) in context.connections.iter() {
                 if let Err(e) = conn.try_write_one(&mut connect) {
                     eprintln!("{e}");
 
-                    World::schedule_drop(&mut context.schedule_queue, *other);
+                    World::schedule_drop(&mut context.schedule_queue, *position);
 
                     continue;
                 }
 
-                users.push((conn.id, other.0, other.1));
+                users.push((conn.id, position.x, position.y, position.z));
             }
 
             let mut introduce = packet::Outgoing::Introduce { users }.serialize();
