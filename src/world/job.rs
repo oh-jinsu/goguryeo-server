@@ -1,10 +1,10 @@
 use tokio::time;
 
-use crate::net::Conn;
+use crate::{net::Conn, common::math::Vector3};
 
 pub enum Job {
-    Read((i32, i32)),
-    Drop((i32, i32)),
+    Read(Vector3),
+    Drop(Vector3),
     Welcome(Conn),
-    Move { from: (i32, i32), tick: time::Duration },
+    Move { from: Vector3, tick: time::Duration },
 }

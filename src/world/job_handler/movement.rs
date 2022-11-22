@@ -2,20 +2,20 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::packet};
+use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::packet, common::math::Vector3};
 
 ///
 /// Switch the position of an object.
 /// 
-pub fn handle(from: (i32, i32), tick: time::Duration, context: &mut World) -> Result<(), Box<dyn Error>>  {
+pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Result<(), Box<dyn Error>>  {
     let next = if let Some(Some(Object::Human { state, .. })) = context.map.get(&from).map(|tile| &tile.object) {
         match state {
             HumanState::Idle { .. } => from,
             HumanState::Move { direction, .. } => match direction {
-                1 => (from.0, from.1 + 1),
-                2 => (from.0, from.1 - 1),
-                3 => (from.0 - 1, from.1),
-                4 => (from.0 + 1, from.1),
+                1 => Vector3::new(from.x, from.y, from.z + 1),
+                2 => Vector3::new(from.x, from.y, from.z - 1),
+                3 => Vector3::new(from.x - 1, from.y, from.z),
+                4 => Vector3::new(from.x + 1, from.y, from.z),
                 _ => return Ok(())
             }
         }
@@ -39,7 +39,7 @@ pub fn handle(from: (i32, i32), tick: time::Duration, context: &mut World) -> Re
                     HumanState::Move { updated_at, .. } => updated_at,
                 }};
 
-                let mut outgoing = packet::Outgoing::Arrive { id, x: from.0, z: from.1 }.serialize();
+                let mut outgoing = packet::Outgoing::Arrive { id, x: from.x, y: from.y, z: from.z }.serialize();
 
                 for (key, conn) in context.connections.iter() {
                     if let Err(e) = conn.try_write_one(&mut outgoing) {
@@ -67,7 +67,7 @@ pub fn handle(from: (i32, i32), tick: time::Duration, context: &mut World) -> Re
                     context.connections.insert(next, conn);
                 }
             
-                let mut outgoing = packet::Outgoing::Move { id, x: next.0, z: next.1, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
+                let mut outgoing = packet::Outgoing::Move { id, x: next.x, y: next.y, z: next.z, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
             
                 for (key, conn) in context.connections.iter() {
                     if let Err(e) = conn.try_write_one(&mut outgoing) {
