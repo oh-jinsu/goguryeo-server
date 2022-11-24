@@ -1,5 +1,5 @@
 pub mod packet;
 
-mod conn;
+mod io;
 
-pub use conn::Conn;
+pub use io::{Reader, Writer};

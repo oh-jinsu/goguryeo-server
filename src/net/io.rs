@@ -2,23 +2,20 @@ use std::io;
 
 use tokio::net::TcpStream;
 
-pub struct Conn {
-    pub id: i32,
-    stream: TcpStream,
+pub trait Reader {
+    fn try_read_one(&self, buf: &mut Vec<u8>) -> io::Result<()>;
+
+    fn try_read_to_end(&self, buf: &mut [u8]) -> io::Result<()>;
 }
 
-impl Conn {
-    pub fn new(stream: TcpStream, id: i32) -> Conn {
-        println!("connection {id} created");
+pub trait Writer {
+    fn try_write_one(&self, buf: &mut Vec<u8>) -> io::Result<()>;
 
-        Conn { stream, id }
-    }
+    fn try_write_to_end(&self, buf: &mut [u8]) -> io::Result<()>;
+}
 
-    pub async fn readable(&self) -> io::Result<()> {
-        self.stream.readable().await
-    }
-
-    pub fn try_read_one(&self, buf: &mut Vec<u8>) -> io::Result<()> {
+impl Reader for TcpStream {
+    fn try_read_one(&self, buf: &mut Vec<u8>) -> io::Result<()> {
         if buf.len() < 2 {
             buf.resize(2, 0);
         }
@@ -37,41 +34,16 @@ impl Conn {
 
         buf.resize(size, 0);
 
-        self.try_read(buf)?;
+        self.try_read_to_end(buf)?;
 
         Ok(())
     }
     
-    fn try_read(&self, buf: &mut [u8]) -> io::Result<()> {
+    fn try_read_to_end(&self, buf: &mut [u8]) -> io::Result<()> {
         let mut pos = 0;
 
         while pos < buf.len() {
-            match self.stream.try_read(&mut buf[pos..]) {
-                Ok(0) => return Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
-                Ok(n) => { pos += n; },
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn try_write_one(&self, buf: &mut Vec<u8>) -> io::Result<()> {
-        let size: u16 = match buf.len().try_into() {
-            Ok(size) => size,
-            Err(_) => return Err(io::Error::new(io::ErrorKind::Other, "buffer too large"))
-        };
-
-        let mut buf = [&u16::to_le_bytes(size) as &[u8], buf].concat();
-
-        self.try_write(&mut buf)
-    }
-
-    fn try_write(&self, buf: &mut [u8]) -> io::Result<()> {
-        let mut pos = 0;
-
-        while pos < buf.len() {
-            match self.stream.try_write(&mut buf[pos..]) {
+            match self.try_read(&mut buf[pos..]) {
                 Ok(0) => return Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
                 Ok(n) => { pos += n; },
                 Err(e) => return Err(e),
@@ -82,8 +54,29 @@ impl Conn {
     }
 }
 
-impl Drop for Conn {
-    fn drop(&mut self) {
-        println!("connection {} dropped", self.id);
+impl Writer for TcpStream {
+    fn try_write_one(&self, buf: &mut Vec<u8>) -> io::Result<()> {
+        let size: u16 = match buf.len().try_into() {
+            Ok(size) => size,
+            Err(_) => return Err(io::Error::new(io::ErrorKind::Other, "buffer too large"))
+        };
+
+        let mut buf = [&u16::to_le_bytes(size) as &[u8], buf].concat();
+
+        self.try_write_to_end(&mut buf)
+    }
+
+    fn try_write_to_end(&self, buf: &mut [u8]) -> io::Result<()> {
+        let mut pos = 0;
+
+        while pos < buf.len() {
+            match self.try_write(&mut buf[pos..]) {
+                Ok(0) => return Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
+                Ok(n) => { pos += n; },
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
     }
 }

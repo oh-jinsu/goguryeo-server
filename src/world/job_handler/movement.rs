@@ -2,7 +2,7 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::packet, common::math::Vector3};
+use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::{packet, Writer}, common::math::Vector3};
 
 ///
 /// Switch the position of an object.
@@ -41,8 +41,8 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
 
                 let mut outgoing = packet::Outgoing::Arrive { id, x: from.x, y: from.y, z: from.z }.serialize();
 
-                for (key, conn) in context.connections.iter() {
-                    if let Err(e) = conn.try_write_one(&mut outgoing) {
+                for (key, (stream, _)) in context.connections.iter() {
+                    if let Err(e) = stream.try_write_one(&mut outgoing) {
                         eprintln!("{e}");
 
                         World::schedule_drop(&mut context.schedule_queue, *key);
@@ -69,8 +69,8 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
             
                 let mut outgoing = packet::Outgoing::Move { id, x: next.x, y: next.y, z: next.z, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();
             
-                for (key, conn) in context.connections.iter() {
-                    if let Err(e) = conn.try_write_one(&mut outgoing) {
+                for (key, (stream, _)) in context.connections.iter() {
+                    if let Err(e) = stream.try_write_one(&mut outgoing) {
                         eprintln!("{e}");
             
                         World::schedule_drop(&mut context.schedule_queue, *key);

@@ -5,7 +5,7 @@ use crate::common::Bytes;
 #[derive(Debug)]
 pub enum Incoming {
     Ping { timestamp: i64 },
-    Hello { name: String },
+    Hello { token: String },
     Move { direction: u8 }
 }
 
@@ -32,11 +32,7 @@ impl Incoming {
                     return Err(format!("buffer too short to deserialize, {buf:?}").into())
                 }
 
-                if body.len() > 25 {
-                    return Err(format!("buffer too long to deserialize, {buf:?}").into())
-                }
-
-                Ok(Incoming::Hello { name: String::from_utf8_lossy(body).into_owned() })
+                Ok(Incoming::Hello { token: String::from_utf8_lossy(body).into_owned() })
             },
             3 => {
                 if body.len() < 1 {

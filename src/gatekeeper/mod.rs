@@ -5,25 +5,24 @@ use std::{error::Error, io};
 use std::collections::HashMap;
 
 use futures::future::select_all;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 use crate::net::packet;
-use crate::{common::AutoIncrement, net::Conn};
+use crate::net::{Reader, Writer};
+use crate::token::verify;
 
 use self::job::Job;
 
 pub struct Gatekeeper {
-    auto_increment: AutoIncrement,
     listener: TcpListener,
-    connections: HashMap<SocketAddr, Conn>,
-    sender: mpsc::Sender<Conn>
+    connections: HashMap<SocketAddr, TcpStream>,
+    sender: mpsc::Sender<(TcpStream, [u8; 16])>
 }
 
 impl Gatekeeper {
-    pub fn new(listener: TcpListener, tx: mpsc::Sender<Conn>) -> Self {
+    pub fn new(listener: TcpListener, tx: mpsc::Sender<(TcpStream, [u8; 16])>) -> Self {
         Gatekeeper {
-            auto_increment: AutoIncrement::new(),
             listener,
             connections: HashMap::new(),
             sender: tx,
@@ -66,11 +65,7 @@ impl Gatekeeper {
     async fn handle_job(&mut self, job: Job) -> Result<(), Box<dyn Error>> {
         match job {
             Job::Accept((stream, addr)) => {
-                let id = self.auto_increment.take();
-
-                let conn = Conn::new(stream, id);
-        
-                self.connections.insert(addr, conn);
+                self.connections.insert(addr, stream);
             },
             Job::Read(addr) => if let Some(conn) = self.connections.get(&addr) {
                 let mut buf = vec![0 as u8; 2];
@@ -107,12 +102,22 @@ impl Gatekeeper {
 
     fn handle_packet(&mut self, packet: packet::Incoming, addr: SocketAddr) -> Result<(), Box<dyn Error>> {
         match packet {
-            packet::Incoming::Hello { name } => if let Some(conn) = self.connections.remove(&addr) {
-                let outgoing = packet::Outgoing::Hello { id: conn.id, name };
+            packet::Incoming::Hello { token } => if let Some(stream) = self.connections.remove(&addr) {
+                let secret = std::env::var("AUTH_SECRET").unwrap();
 
-                conn.try_write_one(&mut outgoing.serialize())?;
+                let token = verify(&token, &secret)?;
 
-                let _ = self.sender.try_send(conn);
+                let outgoing = packet::Outgoing::Hello { id: token.id };
+
+                if let Err(e) = stream.try_write_one(&mut outgoing.serialize()) {
+                    eprintln!("{e}");
+
+                    self.connections.remove(&addr); 
+
+                    return Ok(());
+                }
+
+                let _ = self.sender.try_send((stream, token.id));
             },
             packet::Incoming::Ping { timestamp } => if let Some(conn) = self.connections.get(&addr) {
                 let outgoing = packet::Outgoing::Pong { timestamp };

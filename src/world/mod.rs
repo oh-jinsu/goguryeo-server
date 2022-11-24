@@ -6,11 +6,12 @@ use std::error::Error;
 use std::collections::{BinaryHeap, HashMap};
 
 use futures::future::select_all;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{self, Instant};
 
 use crate::common::math::Vector3;
-use crate::{schedule::Schedule, net::Conn};
+use crate::schedule::Schedule;
 
 use self::job::Job;
 
@@ -20,13 +21,13 @@ pub struct Tile {
 
 pub enum Object {
     Human {
-        id: i32,
+        id: [u8; 16],
         state: HumanState,
     },
 }
 
 impl Object {
-    pub fn new_human(id: i32) -> Self {
+    pub fn new_human(id: [u8; 16]) -> Self {
         Object::Human { id, state: HumanState::Idle { updated_at: None } }
     }
 }
@@ -38,13 +39,13 @@ pub enum HumanState {
 
 pub struct World {
     schedule_queue: BinaryHeap<Schedule<Job>>,
-    receiver: mpsc::Receiver<Conn>,
-    connections: HashMap<Vector3, Conn>,
+    receiver: mpsc::Receiver<(TcpStream, [u8; 16])>,
+    connections: HashMap<Vector3, (TcpStream, [u8; 16])>,
     map: HashMap<Vector3, Tile>,
 }
 
 impl World {
-    pub fn new(map: HashMap<Vector3, Tile>, receiver: mpsc::Receiver<Conn>) -> Self {
+    pub fn new(map: HashMap<Vector3, Tile>, receiver: mpsc::Receiver<(TcpStream, [u8; 16])>) -> Self {
         World {
             schedule_queue: BinaryHeap::new(),
             receiver,
@@ -74,8 +75,8 @@ impl World {
     }
 
     async fn select_from_receiver(&mut self) -> Option<Job> {
-        if let Some(conn) = self.receiver.recv().await {
-            Some(Job::Welcome(conn))
+        if let Some((stream, id)) = self.receiver.recv().await {
+            Some(Job::Welcome(stream, id))
         } else {
             None
         }
@@ -83,15 +84,15 @@ impl World {
 
     async fn select_without_schedule_queue(&mut self) -> Option<Job> {
         Some(tokio::select! {
-            Some(conn) = self.receiver.recv() => {
-                Job::Welcome(conn)
+            Some((stream, id)) = self.receiver.recv() => {
+                Job::Welcome(stream, id)
             },
-            (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
-                conn.readable().await?;
+            (Ok(position), _, _) = select_all(self.connections.iter_mut().map(|(key, (stream, _))| Box::pin(async {
+                stream.readable().await?;
 
                 Ok::<&Vector3, Box<dyn Error>>(key)
             }))) => {
-                Job::Read(key.clone())
+                Job::Read(position.clone())
             },
         })
     }
@@ -104,15 +105,15 @@ impl World {
         }
 
         Some(tokio::select! {
-            Some(conn) = self.receiver.recv() => {
-                Job::Welcome(conn)
+            Some((stream, id)) = self.receiver.recv() => {
+                Job::Welcome(stream, id)
             },
-            (Ok(key), _, _) = select_all(self.connections.iter_mut().map(|(key, conn)| Box::pin(async {
-                conn.readable().await?;
+            (Ok(position), _, _) = select_all(self.connections.iter_mut().map(|(key, (stream, _))| Box::pin(async {
+                stream.readable().await?;
 
                 Ok::<&Vector3, Box<dyn Error>>(key)
             }))) => {
-                Job::Read(key.clone())
+                Job::Read(position.clone())
             },
             _ = time::sleep_until(first_schedule.deadline) => {
                 self.schedule_queue.pop().unwrap().job
@@ -120,8 +121,8 @@ impl World {
         })
     }
 
-    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, key: Vector3) {
-        let job = Job::Drop(key);
+    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, position: Vector3) {
+        let job = Job::Drop(position);
 
         let schedule = Schedule::now(job);
 
