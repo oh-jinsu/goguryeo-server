@@ -18,7 +18,7 @@ pub fn verify(input: &str, secret: &str) -> Result<Token, Box<dyn Error>> {
 
     let mut payload: Vec<u8> = vec![];
 
-    base64::decode_config_buf(&input[..32], base64::URL_SAFE_NO_PAD, &mut payload)?;
+    base64::decode_config_buf(&input[..32], base64::URL_SAFE, &mut payload)?;
 
     let mut mac = HS256::new_from_slice(secret.as_bytes())?;
 
@@ -26,8 +26,12 @@ pub fn verify(input: &str, secret: &str) -> Result<Token, Box<dyn Error>> {
 
     let signature = mac.finalize().into_bytes();
 
-    if &input[32..] != base64::encode_config(signature, base64::URL_SAFE_NO_PAD) {
-        return Err("".into());
+    let expect = &input[32..];
+
+    let actual = base64::encode_config(signature, base64::URL_SAFE_NO_PAD);
+
+    if expect != actual {
+        return Err(format!("invalid token, \nexpect: {expect:?}\nactual: {actual:?}", ).into());
     }
 
     let mut id = [0 as u8; 16];

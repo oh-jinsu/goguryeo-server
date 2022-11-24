@@ -109,13 +109,7 @@ impl Gatekeeper {
 
                 let outgoing = packet::Outgoing::Hello { id: token.id };
 
-                if let Err(e) = stream.try_write_one(&mut outgoing.serialize()) {
-                    eprintln!("{e}");
-
-                    self.connections.remove(&addr); 
-
-                    return Ok(());
-                }
+                stream.try_write_one(&mut outgoing.serialize())?;
 
                 let _ = self.sender.try_send((stream, token.id));
             },
