@@ -1,11 +1,9 @@
 pub mod common;
 
-pub mod schedule;
+pub mod job;
 
 pub mod net;
 
-pub mod gatekeeper;
-
 pub mod world;
 
-pub mod token;
+pub mod auth;

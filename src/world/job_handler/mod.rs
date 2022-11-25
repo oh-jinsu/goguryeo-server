@@ -1,7 +1,11 @@
 use std::error::Error;
 
-use super::{World, job::Job};
+use crate::job::Job;
 
+use super::World;
+
+mod accept;
+mod auth;
 mod welcome;
 mod drop;
 mod read;
@@ -12,6 +16,8 @@ mod movement;
 /// 
 pub fn handle(context: &mut World, job: Job) -> Result<(), Box<dyn Error>> {
     match job {
+        Job::Accept(stream) => accept::handle(stream, context),
+        Job::Auth(index) => auth::handle(index, context),
         Job::Welcome(stream, key) => welcome::handle(key, stream, context),
         Job::Drop(key) => drop::handle(key, context),
         Job::Read(key) => read::handle(key, context),
