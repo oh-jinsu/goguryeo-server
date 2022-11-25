@@ -56,69 +56,71 @@ impl World {
 
     pub async fn run(mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            if let Some(job) = self.select_job().await {
-                if let Err(e) = job_handler::handle(&mut self, job) {
-                    eprintln!("{e}");
-                }
+            let job = self.select_job().await;
+
+            if let Err(e) = job_handler::handle(&mut self, job) {
+                eprintln!("{e}");
             }
         }
     }
 
-    async fn select_job(&mut self) -> Option<Job> {
-        if self.connections.is_empty() {
-            self.select_from_receiver().await
-        } else if self.schedule_queue.is_empty() {
-            self.select_without_schedule_queue().await
-        } else {
-            self.select_with_all().await
+    async fn select_job(&mut self) -> Job {
+        if let Some(job) = Self::get_late_schedule(&mut self.schedule_queue) {
+            return job;
         }
-    }
-
-    async fn select_from_receiver(&mut self) -> Option<Job> {
-        if let Some((stream, id)) = self.receiver.recv().await {
-            Some(Job::Welcome(stream, id))
-        } else {
-            None
-        }
-    }
-
-    async fn select_without_schedule_queue(&mut self) -> Option<Job> {
-        Some(tokio::select! {
+        
+        tokio::select! {
             Some((stream, id)) = self.receiver.recv() => {
                 Job::Welcome(stream, id)
             },
-            (Ok(id), _, _) = select_all(self.connections.iter_mut().map(|(id, (stream, _))| Box::pin(async {
-                stream.readable().await?;
-
-                Ok::<&[u8; 16], Box<dyn Error>>(id)
-            }))) => {
+            Ok(id) = Self::select_from_connections(&mut self.connections) => {
                 Job::Read(id.clone())
             },
-        })
-    }
-
-    async fn select_with_all(&mut self) -> Option<Job> {
-        let first_schedule = self.schedule_queue.peek().unwrap();
-
-        if first_schedule.deadline < time::Instant::now() {
-            return Some(self.schedule_queue.pop().unwrap().job);
-        }
-
-        Some(tokio::select! {
-            Some((stream, id)) = self.receiver.recv() => {
-                Job::Welcome(stream, id)
-            },
-            (Ok(id), _, _) = select_all(self.connections.iter_mut().map(|(id, (stream, _))| Box::pin(async {
-                stream.readable().await?;
-
-                Ok::<&[u8; 16], Box<dyn Error>>(id)
-            }))) => {
-                Job::Read(id.clone())
-            },
-            _ = time::sleep_until(first_schedule.deadline) => {
+            Ok(_) = Self::select_from_schedule(&self.schedule_queue) => {
                 self.schedule_queue.pop().unwrap().job
-            },
-        })
+            }
+        }
+    }
+
+    fn get_late_schedule(schedule_queue: &mut BinaryHeap<Schedule<Job>>) -> Option<Job> {
+        if schedule_queue.is_empty() {
+            return None
+        }
+
+        let first_schedule = schedule_queue.peek().unwrap();
+
+        if first_schedule.deadline > time::Instant::now() {
+            return None;
+        }
+
+        Some(schedule_queue.pop().unwrap().job)
+    } 
+
+    async fn select_from_schedule(schedule_queue: &BinaryHeap<Schedule<Job>>) -> Result<(), Box<dyn Error>> {
+        if schedule_queue.is_empty() {
+            return Err("no schedule".into());
+        }
+        
+        let first_schedule = schedule_queue.peek().unwrap();
+
+        time::sleep_until(first_schedule.deadline).await;
+ 
+        Ok(())
+    }
+
+    async fn select_from_connections(connections: &mut HashMap<[u8; 16], (TcpStream, Vector3)>) -> Result<&[u8; 16], Box<dyn Error>> {
+        if connections.is_empty() {
+            return Err("no connections".into())
+        }
+
+        match select_all(connections.iter_mut().map(|(id, (stream, _))| Box::pin(async {
+            stream.readable().await?;
+
+            Ok::<&[u8; 16], Box<dyn Error>>(id)
+        }))).await {
+            (Ok(id), _, _) => Ok(id),
+            (Err(e), _, _) => Err(e),
+        }
     }
 
     fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, id: [u8; 16]) {
