@@ -20,7 +20,7 @@ impl Reader for TcpStream {
             buf.resize(2, 0);
         }
 
-        self.try_read(&mut buf[..2])?;
+        self.try_read_to_end(&mut buf[..2])?;
 
         let size = usize::from(u16::from_le_bytes([buf[0], buf[1]]));
 

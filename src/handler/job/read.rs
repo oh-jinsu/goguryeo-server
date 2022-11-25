@@ -15,8 +15,6 @@ pub fn handle(key: [u8; 16], context: &mut Context) -> Result<(), Box<dyn Error>
                 eprintln!("{e}");
 
                 Context::schedule_drop(&mut context.schedule_queue, key);
-
-                return Ok(());
             }
         
             return Ok(());
@@ -37,8 +35,6 @@ pub fn handle(key: [u8; 16], context: &mut Context) -> Result<(), Box<dyn Error>
             eprintln!("{e}");
 
             Context::schedule_drop(&mut context.schedule_queue, key);
-
-            return Ok(());
         }
     }
 
