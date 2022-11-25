@@ -1,13 +1,17 @@
 use std::error::Error;
-use crate::{world::World, net::{packet, io::Writer}, common::math::Vector3};
+use crate::{world::{World, Object}, net::{packet, io::Writer}};
 
 ///
 /// Drop a connection
 /// 
-pub fn handle(position: Vector3, context: &mut World) -> Result<(), Box<dyn Error>> {
-    if let Some((_, id)) = context.connections.remove(&position) {
+pub fn handle(id: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
+    if let Some((_, position)) = context.connections.remove(&id) {
         if let Some(tile) = context.map.get_mut(&position) {
-            tile.object = None;
+            if let Some(Object::Human { id: object_id, .. }) = &tile.object {
+                if id == *object_id {
+                    tile.object = None;
+                }
+            }
         }
 
         let mut outgoing = packet::Outgoing::Disconnect { id }.serialize();

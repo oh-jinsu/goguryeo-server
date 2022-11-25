@@ -15,11 +15,11 @@ pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut World) -> Result<()
 
             let mut connect = packet::Outgoing::Connect { id, x: current.x, y: current.y, z: current.z }.serialize();
 
-            for (position, (stream, id)) in context.connections.iter() {
+            for (id, (stream, position)) in context.connections.iter() {
                 if let Err(e) = stream.try_write_one(&mut connect) {
                     eprintln!("{e}");
 
-                    World::schedule_drop(&mut context.schedule_queue, *position);
+                    World::schedule_drop(&mut context.schedule_queue, *id);
 
                     continue;
                 }
@@ -32,12 +32,12 @@ pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut World) -> Result<()
             if let Err(e) = stream.try_write_one(&mut introduce) {
                 eprintln!("{e}");
 
-                World::schedule_drop(&mut context.schedule_queue, *current);
+                World::schedule_drop(&mut context.schedule_queue, id);
 
                 return Ok(());
             }
 
-            context.connections.insert(current.clone(), (stream, id));
+            context.connections.insert(id, (stream, current.clone()));
             
             return Ok(());
         }

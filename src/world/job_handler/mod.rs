@@ -12,9 +12,9 @@ mod movement;
 /// 
 pub fn handle(context: &mut World, job: Job) -> Result<(), Box<dyn Error>> {
     match job {
-        Job::Welcome(stream, id) => welcome::handle(id, stream, context),
-        Job::Drop(position) => drop::handle(position, context),
-        Job::Read(position) => read::handle(position, context),
+        Job::Welcome(stream, key) => welcome::handle(key, stream, context),
+        Job::Drop(key) => drop::handle(key, context),
+        Job::Read(key) => read::handle(key, context),
         Job::Move { from, tick } => movement::handle(from, tick, context),
     }
 }

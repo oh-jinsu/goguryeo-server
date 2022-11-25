@@ -31,7 +31,7 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
 
     if is_unmovable {
         if let Some(tile) = context.map.get_mut(&from) {
-            if let Some(Object::Human { id, state}) = &mut tile.object {
+            if let Some(Object::Human { id, state }) = &mut tile.object {
                 let id = id.clone();
                 
                 *state = HumanState::Idle { updated_at: *match state {
@@ -63,8 +63,8 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
 
                 context.map.get_mut(&next).unwrap().object = tile.object.take();
 
-                if let Some(conn) = context.connections.remove(&from) {
-                    context.connections.insert(next, conn);
+                if let Some(conn) = context.connections.get_mut(&id) {
+                    conn.1 = next;
                 }
             
                 let mut outgoing = packet::Outgoing::Move { id, x: next.x, y: next.y, z: next.z, tick: i64::try_from(tick.as_millis()).unwrap() }.serialize();

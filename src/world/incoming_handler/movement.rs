@@ -1,7 +1,7 @@
 use std::error::Error;
 use tokio::time;
 
-use crate::{world::{World, Object, HumanState, job::Job}, schedule::{Schedule}, common::math::Vector3};
+use crate::{world::{World, Object, HumanState, job::Job}, schedule::Schedule};
 
 ///
 /// Handle the request for move.
@@ -9,7 +9,12 @@ use crate::{world::{World, Object, HumanState, job::Job}, schedule::{Schedule}, 
 /// Change the state of the human object, and
 /// let a job execute the actual position swtiching.
 /// 
-pub fn handle(direction: u8, position: Vector3, context: &mut World) -> Result<(), Box<dyn Error>> {
+pub fn handle(direction: u8, key: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
+    let (_, position) = match context.connections.get(&key) {
+        Some(conn) => conn,
+        None => return Err("connectio not found".into())
+    };
+    
     if let Some(tile) = context.map.get_mut(&position) {
         if let Some(Object::Human { state, .. }) = &mut tile.object {
             if direction == 0 {
@@ -41,7 +46,7 @@ pub fn handle(direction: u8, position: Vector3, context: &mut World) -> Result<(
 
                 *state = HumanState::Move { direction, updated_at: Some(now) };
 
-                let job = Job::Move { from: position, tick };
+                let job = Job::Move { from: *position, tick };
 
                 context.schedule_queue.push(Schedule::now(job));
             }

@@ -40,7 +40,7 @@ pub enum HumanState {
 pub struct World {
     schedule_queue: BinaryHeap<Schedule<Job>>,
     receiver: mpsc::Receiver<(TcpStream, [u8; 16])>,
-    connections: HashMap<Vector3, (TcpStream, [u8; 16])>,
+    connections: HashMap<[u8; 16], (TcpStream, Vector3)>,
     map: HashMap<Vector3, Tile>,
 }
 
@@ -87,12 +87,12 @@ impl World {
             Some((stream, id)) = self.receiver.recv() => {
                 Job::Welcome(stream, id)
             },
-            (Ok(position), _, _) = select_all(self.connections.iter_mut().map(|(key, (stream, _))| Box::pin(async {
+            (Ok(id), _, _) = select_all(self.connections.iter_mut().map(|(id, (stream, _))| Box::pin(async {
                 stream.readable().await?;
 
-                Ok::<&Vector3, Box<dyn Error>>(key)
+                Ok::<&[u8; 16], Box<dyn Error>>(id)
             }))) => {
-                Job::Read(position.clone())
+                Job::Read(id.clone())
             },
         })
     }
@@ -108,12 +108,12 @@ impl World {
             Some((stream, id)) = self.receiver.recv() => {
                 Job::Welcome(stream, id)
             },
-            (Ok(position), _, _) = select_all(self.connections.iter_mut().map(|(key, (stream, _))| Box::pin(async {
+            (Ok(id), _, _) = select_all(self.connections.iter_mut().map(|(id, (stream, _))| Box::pin(async {
                 stream.readable().await?;
 
-                Ok::<&Vector3, Box<dyn Error>>(key)
+                Ok::<&[u8; 16], Box<dyn Error>>(id)
             }))) => {
-                Job::Read(position.clone())
+                Job::Read(id.clone())
             },
             _ = time::sleep_until(first_schedule.deadline) => {
                 self.schedule_queue.pop().unwrap().job
@@ -121,8 +121,8 @@ impl World {
         })
     }
 
-    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, position: Vector3) {
-        let job = Job::Drop(position);
+    fn schedule_drop(schedule_queue: &mut BinaryHeap<Schedule<Job>>, id: [u8; 16]) {
+        let job = Job::Drop(id);
 
         let schedule = Schedule::now(job);
 

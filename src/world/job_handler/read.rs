@@ -1,20 +1,20 @@
 use std::error::Error;
 use std::io;
 
-use crate::{world::{World, incoming_handler}, net::{packet, io::Reader}, common::math::Vector3};
+use crate::{world::{World, incoming_handler}, net::{packet, io::Reader}};
 
 ///
 /// Read from a connection
 /// 
-pub fn handle(position: Vector3, context: &mut World) -> Result<(), Box<dyn Error>> {
-    if let Some((stream, _)) = context.connections.get(&position) {
+pub fn handle(key: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
+    if let Some((stream, _)) = context.connections.get(&key) {
         let mut buf = vec![0 as u8; 2];
 
         if let Err(e) = stream.try_read_one(&mut buf) {
             if e.kind() != io::ErrorKind::WouldBlock {
                 eprintln!("{e}");
 
-                World::schedule_drop(&mut context.schedule_queue, position);
+                World::schedule_drop(&mut context.schedule_queue, key);
 
                 return Ok(());
             }
@@ -27,16 +27,16 @@ pub fn handle(position: Vector3, context: &mut World) -> Result<(), Box<dyn Erro
             Err(e) => {
                 eprintln!("{e}");
 
-                World::schedule_drop(&mut context.schedule_queue, position);
+                World::schedule_drop(&mut context.schedule_queue, key);
 
                 return Ok(());
             }
         };
 
-        if let Err(e) = incoming_handler::handle(packet, position, context) {
+        if let Err(e) = incoming_handler::handle(packet, key, context) {
             eprintln!("{e}");
 
-            World::schedule_drop(&mut context.schedule_queue, position);
+            World::schedule_drop(&mut context.schedule_queue, key);
 
             return Ok(());
         }

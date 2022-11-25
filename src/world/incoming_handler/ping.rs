@@ -1,14 +1,14 @@
 use std::error::Error;
 
-use crate::{world::World, net::{packet, io::Writer}, common::math::Vector3};
+use crate::{world::World, net::{packet, io::Writer}};
 
 ///
 /// Handle the request for ping.
 /// 
 /// Just return the passed timestamp to the connection.
 /// 
-pub fn handle(timestamp: i64, current: Vector3, context: &mut World) -> Result<(), Box<dyn Error>> {
-    let stream = match context.connections.get(&current) {
+pub fn handle(timestamp: i64, key: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
+    let stream = match context.connections.get(&key) {
         Some((stream, _)) => stream,
         None => return Ok(())
     };
