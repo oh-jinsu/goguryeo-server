@@ -8,8 +8,7 @@ use futures::future::select_all;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use crate::net::packet;
-use crate::net::{Reader, Writer};
+use crate::net::{packet, io::{Reader, Writer}};
 use crate::token::verify;
 
 use self::job::Job;

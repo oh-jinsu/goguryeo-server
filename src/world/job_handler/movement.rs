@@ -2,7 +2,7 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::{packet, Writer}, common::math::Vector3};
+use crate::{world::{HumanState, Object, job::Job, World}, schedule::Schedule, net::{packet, io::Writer}, common::math::Vector3};
 
 ///
 /// Switch the position of an object.

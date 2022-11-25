@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::io;
 
-use crate::{world::{World, incoming_handler}, net::{packet, Reader}, common::math::Vector3};
+use crate::{world::{World, incoming_handler}, net::{packet, io::Reader}, common::math::Vector3};
 
 ///
 /// Read from a connection
