@@ -2,7 +2,7 @@ use std::error::Error;
 
 use crate::job::Job;
 
-use super::World;
+use super::Context;
 
 mod accept;
 mod auth;
@@ -14,7 +14,7 @@ mod movement;
 ///
 /// Handle a job.
 /// 
-pub fn handle(context: &mut World, job: Job) -> Result<(), Box<dyn Error>> {
+pub fn handle(context: &mut Context, job: Job) -> Result<(), Box<dyn Error>> {
     match job {
         Job::Accept(stream) => accept::handle(stream, context),
         Job::Auth(index) => auth::handle(index, context),

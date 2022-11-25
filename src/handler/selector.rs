@@ -7,9 +7,9 @@ use tokio::{time, net::TcpStream};
 use crate::common::math::Vector3;
 use crate::job::{Job, Schedule};
 
-use super::World;
+use super::Context;
 
-pub async fn select_job(context: &mut World) -> Job {
+pub async fn select_job(context: &mut Context) -> Job {
     if let Some(job) = get_late_schedule(&mut context.schedule_queue) {
         return job;
     }

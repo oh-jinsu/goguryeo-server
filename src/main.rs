@@ -1,6 +1,6 @@
 use std::{error::Error, collections::HashMap};
 
-use mmorpg::{world::{World, Tile}, common::math::Vector3};
+use mmorpg::{handler::Context, common::math::Vector3, constants::Constants, map::tile::Tile};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -15,7 +15,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let world = World::new(map, listener);
+    let constants = Constants::init()?;
 
-    world.run().await
+    let app = Context::new(constants, map, listener);
+
+    app.run().await
 }

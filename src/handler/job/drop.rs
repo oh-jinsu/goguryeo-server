@@ -1,10 +1,10 @@
 use std::error::Error;
-use crate::{world::{World, Object}, net::{packet, io::Writer}};
+use crate::{handler::Context, net::{packet, io::Writer}, map::object::Object};
 
 ///
 /// Drop a connection
 /// 
-pub fn handle(id: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
+pub fn handle(id: [u8; 16], context: &mut Context) -> Result<(), Box<dyn Error>> {
     if let Some((_, position)) = context.connections.remove(&id) {
         if let Some(tile) = context.map.get_mut(&position) {
             if let Some(Object::Human { id: object_id, .. }) = &tile.object {
@@ -20,7 +20,7 @@ pub fn handle(id: [u8; 16], context: &mut World) -> Result<(), Box<dyn Error>> {
             if let Err(e) = stream.try_write_one(&mut outgoing) {
                 eprintln!("{e}");
 
-                World::schedule_drop(&mut context.schedule_queue, *key);
+                Context::schedule_drop(&mut context.schedule_queue, *key);
             }
         }
     }

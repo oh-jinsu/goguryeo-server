@@ -1,12 +1,12 @@
 use std::error::Error;
 use tokio::net::TcpStream;
 
-use crate::{net::{packet, io::Writer}, world::{World, Object}};
+use crate::{net::{packet, io::Writer}, handler::Context, map::object::Object};
 
 /// 
 /// Welcome a conection.
 /// 
-pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut World) -> Result<(), Box<dyn Error>> {
+pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut Context) -> Result<(), Box<dyn Error>> {
     for (current, tile) in context.map.iter_mut() {
         if let None = tile.object {
             tile.object = Some(Object::new_human(id));
@@ -19,7 +19,7 @@ pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut World) -> Result<()
                 if let Err(e) = stream.try_write_one(&mut connect) {
                     eprintln!("{e}");
 
-                    World::schedule_drop(&mut context.schedule_queue, *id);
+                    Context::schedule_drop(&mut context.schedule_queue, *id);
 
                     continue;
                 }
@@ -32,7 +32,7 @@ pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut World) -> Result<()
             if let Err(e) = stream.try_write_one(&mut introduce) {
                 eprintln!("{e}");
 
-                World::schedule_drop(&mut context.schedule_queue, id);
+                Context::schedule_drop(&mut context.schedule_queue, id);
 
                 return Ok(());
             }

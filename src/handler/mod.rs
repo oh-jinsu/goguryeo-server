@@ -1,39 +1,19 @@
-mod incoming_handler;
-mod job_handler;
+mod incoming;
+mod job;
 mod selector;
 
 use std::error::Error;
 use std::collections::{BinaryHeap, HashMap};
 
 use tokio::net::{TcpStream, TcpListener};
-use tokio::time;
 
 use crate::common::math::Vector3;
+use crate::constants::Constants;
 use crate::job::{Schedule, Job};
+use crate::map::tile::Tile;
 
-pub struct Tile {
-    pub object: Option<Object>
-}
-
-pub enum Object {
-    Human {
-        id: [u8; 16],
-        state: HumanState,
-    },
-}
-
-impl Object {
-    pub fn new_human(id: [u8; 16]) -> Self {
-        Object::Human { id, state: HumanState::Idle { updated_at: None } }
-    }
-}
-
-pub enum HumanState {
-    Idle { updated_at: Option<time::Instant> },
-    Move { direction: u8, updated_at: Option<time::Instant> },
-}
-
-pub struct World {
+pub struct Context {
+    constants: Constants,
     schedule_queue: BinaryHeap<Schedule<Job>>,
     listener: TcpListener,
     waitings: Vec<TcpStream>,
@@ -41,9 +21,10 @@ pub struct World {
     map: HashMap<Vector3, Tile>,
 }
 
-impl World {
-    pub fn new(map: HashMap<Vector3, Tile>, listener: TcpListener) -> Self {
-        World {
+impl Context {
+    pub fn new(constants: Constants, map: HashMap<Vector3, Tile>, listener: TcpListener) -> Self {
+        Context {
+            constants,
             schedule_queue: BinaryHeap::new(),
             listener,
             waitings: Vec::new(),
@@ -56,7 +37,7 @@ impl World {
         loop {
             let job = selector::select_job(&mut self).await;
 
-            if let Err(e) = job_handler::handle(&mut self, job) {
+            if let Err(e) = job::handle(&mut self, job) {
                 eprintln!("{e}");
             }
         }

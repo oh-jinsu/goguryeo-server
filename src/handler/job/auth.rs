@@ -1,8 +1,8 @@
 use std::{error::Error, io};
 
-use crate::{world::World, net::{io::*, packet}, auth, job::{Schedule, Job}};
+use crate::{handler::Context, net::{io::*, packet}, auth, job::{Schedule, Job}};
 
-pub fn handle(index: usize, context: &mut World) -> Result<(), Box<dyn Error>> {
+pub fn handle(index: usize, context: &mut Context) -> Result<(), Box<dyn Error>> {
     let stream = match context.waitings.get(index) {
         Some(stream) => stream,
         None => return Ok(())
@@ -40,9 +40,7 @@ pub fn handle(index: usize, context: &mut World) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let secret = std::env::var("AUTH_SECRET").unwrap();
-
-    let token = auth::verify(&token, &secret)?;
+    let token = auth::verify(&token, &context.constants.auth_secret)?;
 
     let outgoing = packet::Outgoing::Hello { id: token.id };
 

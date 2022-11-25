@@ -2,12 +2,12 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{world::{HumanState, Object, World}, job::{Schedule, Job}, net::{packet, io::Writer}, common::math::Vector3};
+use crate::{handler::Context, job::{Schedule, Job}, net::{packet, io::Writer}, common::math::Vector3, map::object::{Object, HumanState}};
 
 ///
 /// Switch the position of an object.
 /// 
-pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Result<(), Box<dyn Error>>  {
+pub fn handle(from: Vector3, tick: time::Duration, context: &mut Context) -> Result<(), Box<dyn Error>>  {
     let next = if let Some(Some(Object::Human { state, .. })) = context.map.get(&from).map(|tile| &tile.object) {
         match state {
             HumanState::Idle { .. } => from,
@@ -45,7 +45,7 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
                     if let Err(e) = stream.try_write_one(&mut outgoing) {
                         eprintln!("{e}");
 
-                        World::schedule_drop(&mut context.schedule_queue, *key);
+                        Context::schedule_drop(&mut context.schedule_queue, *key);
                     }
                 }
             }
@@ -73,7 +73,7 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut World) -> Resul
                     if let Err(e) = stream.try_write_one(&mut outgoing) {
                         eprintln!("{e}");
             
-                        World::schedule_drop(&mut context.schedule_queue, *key);
+                        Context::schedule_drop(&mut context.schedule_queue, *key);
             
                         continue;
                     }
