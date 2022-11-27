@@ -7,10 +7,9 @@ use std::collections::{BinaryHeap, HashMap};
 
 use tokio::net::{TcpStream, TcpListener};
 
-use crate::common::math::Vector3;
 use crate::constants::Constants;
 use crate::job::{Schedule, Job};
-use crate::map::tile::Tile;
+use crate::map::{Vector3, Map};
 
 pub struct Context {
     constants: Constants,
@@ -18,11 +17,11 @@ pub struct Context {
     listener: TcpListener,
     waitings: Vec<TcpStream>,
     connections: HashMap<[u8; 16], (TcpStream, Vector3)>,
-    map: HashMap<Vector3, Tile>,
+    map: Map,
 }
 
 impl Context {
-    pub fn new(constants: Constants, map: HashMap<Vector3, Tile>, listener: TcpListener) -> Self {
+    pub fn new(constants: Constants, map: Map, listener: TcpListener) -> Self {
         Context {
             constants,
             schedule_queue: BinaryHeap::new(),

@@ -4,8 +4,8 @@ use std::collections::BinaryHeap;
 use futures::future::select_all;
 use tokio::{time, net::TcpStream};
 
-use crate::common::math::Vector3;
 use crate::job::{Job, Schedule};
+use crate::map::Vector3;
 
 use super::Context;
 

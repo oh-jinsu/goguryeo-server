@@ -7,7 +7,7 @@ use crate::{net::{packet, io::Writer}, handler::Context, map::object::Object};
 /// Welcome a conection.
 /// 
 pub fn handle(id: [u8; 16], stream: TcpStream, context: &mut Context) -> Result<(), Box<dyn Error>> {
-    for (current, tile) in context.map.iter_mut() {
+    for (current, tile) in context.map.tiles.iter_mut() {
         if let None = tile.object {
             tile.object = Some(Object::new_human(id));
             

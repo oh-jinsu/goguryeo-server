@@ -1,19 +1,15 @@
-use std::{error::Error, collections::HashMap};
+use std::error::Error;
 
-use mmorpg::{handler::Context, common::math::Vector3, constants::Constants, map::tile::Tile};
+use mmorpg::{handler::Context, constants::Constants, map::Map};
 use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
+    let res = reqwest::get("https://raw.githubusercontent.com/oh-jinsu/mmorpg-data/main/map/AA-01.json").await?;
 
-    let mut map = HashMap::new();
-    
-    for x in 0..100 {
-        for z in 0..100 {
-            map.insert(Vector3::new(x, 0, z), Tile { object: None });
-        }
-    }
+    let map: Map = serde_json::from_slice(&res.bytes().await?).unwrap();
+
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
 
     let constants = Constants::init()?;
 

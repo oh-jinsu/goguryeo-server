@@ -6,7 +6,7 @@ use crate::{handler::Context, net::{packet, io::Writer}, map::object::Object};
 /// 
 pub fn handle(id: [u8; 16], context: &mut Context) -> Result<(), Box<dyn Error>> {
     if let Some((_, position)) = context.connections.remove(&id) {
-        if let Some(tile) = context.map.get_mut(&position) {
+        if let Some(tile) = context.map.tiles.get_mut(&position) {
             if let Some(Object::Human { id: object_id, .. }) = &tile.object {
                 if id == *object_id {
                     tile.object = None;

@@ -1,6 +1,6 @@
 use tokio::{time, net::TcpStream};
 
-use crate::common::math::Vector3;
+use crate::map::Vector3;
 
 pub enum Job {
     Accept(TcpStream),

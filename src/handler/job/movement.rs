@@ -2,13 +2,13 @@ use std::error::Error;
 
 use tokio::time;
 
-use crate::{handler::Context, job::{Schedule, Job}, net::{packet, io::Writer}, common::math::Vector3, map::object::{Object, HumanState}};
+use crate::{handler::Context, job::{Schedule, Job}, net::{packet, io::Writer}, map::{object::{Object, HumanState}, Vector3}};
 
 ///
 /// Switch the position of an object.
 /// 
 pub fn handle(from: Vector3, tick: time::Duration, context: &mut Context) -> Result<(), Box<dyn Error>>  {
-    let next = if let Some(Some(Object::Human { state, .. })) = context.map.get(&from).map(|tile| &tile.object) {
+    let next = if let Some(Some(Object::Human { state, .. })) = context.map.tiles.get(&from).map(|tile| &tile.object) {
         match state {
             HumanState::Idle { .. } => from,
             HumanState::Move { direction, .. } => match direction {
@@ -23,14 +23,14 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut Context) -> Res
         return Ok(());
     };
 
-    let is_unmovable = if let Some(tile) = context.map.get(&next) {
+    let is_unmovable = if let Some(tile) = context.map.tiles.get(&next) {
         tile.object.is_some()
     } else {
         true
     };
 
     if is_unmovable {
-        if let Some(tile) = context.map.get_mut(&from) {
+        if let Some(tile) = context.map.tiles.get_mut(&from) {
             if let Some(Object::Human { id, state }) = &mut tile.object {
                 let id = id.clone();
                 
@@ -54,14 +54,14 @@ pub fn handle(from: Vector3, tick: time::Duration, context: &mut Context) -> Res
         return Ok(());
     }
 
-    if let Some(tile) = context.map.get_mut(&from) {
+    if let Some(tile) = context.map.tiles.get_mut(&from) {
         if let Some(Object::Human { state, id }) = &mut tile.object {
             let id = id.clone();
 
             if let HumanState::Move { updated_at, .. } = state {
                 updated_at.replace(time::Instant::now());
 
-                context.map.get_mut(&next).unwrap().object = tile.object.take();
+                context.map.tiles.get_mut(&next).unwrap().object = tile.object.take();
 
                 if let Some(conn) = context.connections.get_mut(&id) {
                     conn.1 = next;

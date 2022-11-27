@@ -15,7 +15,7 @@ pub fn handle(direction: u8, key: [u8; 16], context: &mut Context) -> Result<(),
         None => return Err("connectio not found".into())
     };
     
-    if let Some(tile) = context.map.get_mut(&position) {
+    if let Some(tile) = context.map.tiles.get_mut(&position) {
         if let Some(Object::Human { state, .. }) = &mut tile.object {
             if direction == 0 {
                 *state = HumanState::Idle { updated_at: *match state {
